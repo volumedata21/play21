@@ -1,24 +1,25 @@
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { MenuIcon, SearchIcon, UploadIcon } from './Icons';
 
 interface HeaderProps {
-  onFilesSelected: (files: FileList) => void;
+  onTriggerScan: () => void; // Renamed from onFilesSelected
   searchTerm: string;
   onSearchChange: (term: string) => void;
   toggleSidebar: () => void;
   goHome: () => void;
+  isScanning?: boolean; // Optional prop to show a loading state
 }
 
-const Header: React.FC<HeaderProps> = ({ onFilesSelected, searchTerm, onSearchChange, toggleSidebar, goHome }) => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
+const Header: React.FC<HeaderProps> = ({ 
+  onTriggerScan, 
+  searchTerm, 
+  onSearchChange, 
+  toggleSidebar, 
+  goHome,
+  isScanning = false
+}) => {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [avatar, setAvatar] = useState<string | null>(null);
-
-  const handleFolderClick = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
-  };
 
   const handleLogout = () => {
     if (confirm("Are you sure you want to log out?")) {
@@ -66,23 +67,17 @@ const Header: React.FC<HeaderProps> = ({ onFilesSelected, searchTerm, onSearchCh
       </div>
 
       <div className="flex items-center gap-4">
-        <input
-          type="file"
-          ref={fileInputRef}
-          className="hidden"
-          // @ts-ignore
-          webkitdirectory="" 
-          directory=""
-          multiple
-          onChange={(e) => e.target.files && onFilesSelected(e.target.files)}
-        />
+        {/* THE NEW SCAN BUTTON */}
         <button 
-          onClick={handleFolderClick}
-          className="flex items-center gap-2 glass-button px-4 py-2 rounded-xl text-sm font-medium text-white/90"
-          title="Select Local Folder"
+          onClick={onTriggerScan}
+          disabled={isScanning}
+          className={`flex items-center gap-2 glass-button px-4 py-2 rounded-xl text-sm font-medium transition-all ${isScanning ? 'opacity-50 cursor-wait' : 'text-white/90 hover:bg-white/10'}`}
+          title="Scan Media Folder"
         >
-          <UploadIcon />
-          <span className="hidden sm:inline">Open Folder</span>
+          <UploadIcon /> 
+          <span className="hidden sm:inline">
+            {isScanning ? 'Scanning...' : 'Scan Library'}
+          </span>
         </button>
         
         <div className="relative">
