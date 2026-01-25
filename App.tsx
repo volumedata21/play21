@@ -45,7 +45,10 @@ const App = () => {
             const data = await response.json();
 
             // 2. The backend returns { videos: [...] }
-            const dbVideos = data.videos;
+            const dbVideos = data.videos.map((v: any) => ({
+                ...v,
+                url: v.path
+            }));
 
             // 3. Organize videos into folders for the Sidebar
             const structure: FolderStructure = {};
@@ -180,10 +183,9 @@ const App = () => {
 
         setCurrentVideo(video);
         setViewState(ViewState.WATCH);
-        // On mobile or watch view, auto-close sidebar when selecting a video
-        if (window.innerWidth < 768) {
-            setIsSidebarOpen(false);
-        }
+
+        // FIX: Always close sidebar when playing a video, regardless of screen size
+        setIsSidebarOpen(false);
     };
 
     const toggleSelection = (id: string) => {
