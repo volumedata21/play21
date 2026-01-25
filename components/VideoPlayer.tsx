@@ -34,13 +34,15 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [subtitlesEnabled, setSubtitlesEnabled] = useState(false);
+  
+  // State for loading indicators
+  const [isProcessingThumb, setIsProcessingThumb] = useState(false);
+  
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  // Store the original thumbnail to revert to
-  const originalThumbnailRef = useRef<string | undefined>(video.thumbnail);
-
-  // Check if the current thumbnail is a custom captured one (Data URL)
-  const isCustomThumbnail = video.thumbnail?.startsWith('data:');
+  // Check if current thumbnail is custom (saved as -custom.jpg) or temporary (data:image)
+  // FIXED: Only declared once now
+  const isCustomThumbnail = video.thumbnail && (video.thumbnail.includes('-custom.jpg') || video.thumbnail.startsWith('data:'));
 
   // Check if this video actually HAS subtitles
   const hasSubtitles = video.subtitles && video.subtitles.length > 0;
@@ -49,36 +51,68 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     setShowPlaylistMenu(false);
     setShowShareMenu(false);
     setPlaybackSpeed(1);
-    // Disable subtitles by default on new video load
     setSubtitlesEnabled(false);
     
-    // Update original thumbnail ref when video changes (but not if it's already a custom capture)
-    if (!video.thumbnail?.startsWith('data:')) {
-        originalThumbnailRef.current = video.thumbnail;
-    }
-
     if(videoRef.current) {
         videoRef.current.load();
         videoRef.current.playbackRate = 1;
     }
   }, [video.id, video.url]);
 
-  const captureThumbnail = () => {
-    if (!videoRef.current) return;
+  const captureThumbnail = async () => {
+    if (!videoRef.current || isProcessingThumb) return;
+    
+    setIsProcessingThumb(true);
     const canvas = document.createElement('canvas');
-    canvas.width = 1280; // Capture at higher res
+    canvas.width = 1280; 
     canvas.height = 720;
     const ctx = canvas.getContext('2d');
+    
     if (ctx) {
       ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-      onUpdateVideo({ ...video, thumbnail: dataUrl });
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+      try {
+          // 1. Send image to Server
+          const res = await fetch(`/api/videos/${video.id}/thumbnail`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ image: dataUrl })
+          });
+          const data = await res.json();
+          
+          if (data.success) {
+              // 2. Update React State with the PERMANENT URL from server
+              onUpdateVideo({ ...video, thumbnail: data.thumbnail });
+          } else {
+              alert("Failed to save thumbnail on server.");
+          }
+      } catch (e) {
+          console.error("Failed to upload thumbnail", e);
+          alert("Error saving thumbnail.");
+      }
     }
+    setIsProcessingThumb(false);
   };
 
-  const removeThumbnail = () => {
-    // Revert to the original server/file thumbnail
-    onUpdateVideo({ ...video, thumbnail: originalThumbnailRef.current });
+  const removeThumbnail = async () => {
+    if (isProcessingThumb) return;
+    setIsProcessingThumb(true);
+    try {
+        // 1. Tell Server to delete custom file
+        const res = await fetch(`/api/videos/${video.id}/thumbnail`, {
+            method: 'DELETE'
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+            // 2. Revert React State to the fallback URL returned by server
+            onUpdateVideo({ ...video, thumbnail: data.thumbnail });
+        }
+    } catch (e) {
+        console.error("Failed to remove thumbnail", e);
+    }
+    setIsProcessingThumb(false);
   };
 
   const stepFrame = (forward: boolean) => {
@@ -108,7 +142,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const newState = !subtitlesEnabled;
     setSubtitlesEnabled(newState);
 
-    // Loop through text tracks and enable/disable them
     for (let i = 0; i < videoRef.current.textTracks.length; i++) {
        videoRef.current.textTracks[i].mode = newState ? 'showing' : 'hidden';
     }
@@ -177,7 +210,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
-                {/* Speed Control (Cycle on click) */}
+                {/* Speed Control */}
                 <button 
                     onClick={cyclePlaybackSpeed} 
                     className="glass-button p-2 rounded-lg text-glass-subtext hover:text-white flex items-center gap-1 min-w-[70px] justify-center" 
@@ -187,7 +220,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <span className="text-xs font-bold">{playbackSpeed}x</span>
                 </button>
 
-                {/* Subtitle Toggle Button */}
+                {/* Subtitle Toggle */}
                 <button 
                     onClick={toggleSubtitles} 
                     disabled={!hasSubtitles}
@@ -211,11 +244,14 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 {/* Thumbnail Button (Toggle Capture/Remove) */}
                 <button 
                     onClick={isCustomThumbnail ? removeThumbnail : captureThumbnail} 
-                    className={`flex items-center gap-2 glass-button px-3 py-2 rounded-lg text-xs font-medium transition-colors ${isCustomThumbnail ? 'text-red-400 hover:bg-red-500/10 hover:text-red-300' : 'text-glass-subtext hover:text-brand-accent'}`}
+                    disabled={isProcessingThumb}
+                    className={`flex items-center gap-2 glass-button px-3 py-2 rounded-lg text-xs font-medium transition-colors ${isCustomThumbnail ? 'text-red-400 hover:bg-red-500/10 hover:text-red-300' : 'text-glass-subtext hover:text-brand-accent'} ${isProcessingThumb ? 'opacity-50 cursor-wait' : ''}`}
                     title={isCustomThumbnail ? "Revert to original thumbnail" : "Set current frame as thumbnail"}
                 >
                     {isCustomThumbnail ? <XIcon /> : <CameraIcon />}
-                    <span className="hidden sm:inline">{isCustomThumbnail ? 'Remove Thumb' : 'Thumbnail'}</span>
+                    <span className="hidden sm:inline">
+                        {isProcessingThumb ? 'Saving...' : (isCustomThumbnail ? 'Remove Thumb' : 'Thumbnail')}
+                    </span>
                 </button>
             </div>
         </div>
