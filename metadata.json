@@ -1,0 +1,5 @@
+{
+  "name": "Play21",
+  "description": "A YouTube-style video player for your local video files, featuring AI-generated metadata and folder-based organization.",
+  "requestFramePermissions": []
+}

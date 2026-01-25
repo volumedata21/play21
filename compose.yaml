@@ -1,0 +1,8 @@
+services:
+  web:
+    build: .
+    ports:
+      - "5521:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
