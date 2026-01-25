@@ -6,6 +6,15 @@ export interface VideoFile {
   folder: string;
   url: string;
   thumbnail?: string;
+  
+  // --- SUBTITLE SUPPORT ---
+  subtitles?: {
+    src: string;
+    lang: string;
+    label: string;
+  }[];
+  // ------------------------
+
   duration?: number;
   durationStr?: string; // Pre-formatted for mocks
   views?: string; // Pre-formatted for mocks

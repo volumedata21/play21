@@ -16,8 +16,12 @@ export default defineConfig(() => {
             target: 'http://localhost:3001',
             changeOrigin: true,
           },
-          // NEW: Forward thumbnail requests to the backend
           '/thumbnails': {
+            target: 'http://localhost:3001',
+            changeOrigin: true,
+          },
+          // NEW: Forward subtitle requests
+          '/subtitles': {
             target: 'http://localhost:3001',
             changeOrigin: true,
           }
