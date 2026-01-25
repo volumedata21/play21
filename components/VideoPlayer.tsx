@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { VideoFile, Playlist } from '../types';
-import { LikeIcon, ShareIcon, MenuIcon, CameraIcon, StarIcon, StepBackIcon, StepForwardIcon, PlaylistPlusIcon, NextVideoIcon, PrevVideoIcon, SpeedIcon, CCIcon, DownloadIcon, LinkIcon } from './Icons';
+import { LikeIcon, ShareIcon, MenuIcon, CameraIcon, StarIcon, StepBackIcon, StepForwardIcon, PlaylistPlusIcon, NextVideoIcon, PrevVideoIcon, SpeedIcon, CCIcon, DownloadIcon, LinkIcon, XIcon } from './Icons';
 import { formatViews, formatTimeAgo } from '../services/fileService';
 
 interface VideoPlayerProps {
@@ -33,26 +33,41 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [showPlaylistMenu, setShowPlaylistMenu] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
-  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const [subtitlesEnabled, setSubtitlesEnabled] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Store the original thumbnail to revert to
+  const originalThumbnailRef = useRef<string | undefined>(video.thumbnail);
+
+  // Check if the current thumbnail is a custom captured one (Data URL)
+  const isCustomThumbnail = video.thumbnail?.startsWith('data:');
+
+  // Check if this video actually HAS subtitles
+  const hasSubtitles = video.subtitles && video.subtitles.length > 0;
 
   useEffect(() => {
     setShowPlaylistMenu(false);
     setShowShareMenu(false);
-    setShowSpeedMenu(false);
     setPlaybackSpeed(1);
+    // Disable subtitles by default on new video load
     setSubtitlesEnabled(false);
+    
+    // Update original thumbnail ref when video changes (but not if it's already a custom capture)
+    if (!video.thumbnail?.startsWith('data:')) {
+        originalThumbnailRef.current = video.thumbnail;
+    }
+
     if(videoRef.current) {
+        videoRef.current.load();
         videoRef.current.playbackRate = 1;
     }
-  }, [video.id]);
+  }, [video.id, video.url]);
 
   const captureThumbnail = () => {
     if (!videoRef.current) return;
     const canvas = document.createElement('canvas');
-    canvas.width = 640; 
-    canvas.height = 360;
+    canvas.width = 1280; // Capture at higher res
+    canvas.height = 720;
     const ctx = canvas.getContext('2d');
     if (ctx) {
       ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
@@ -61,9 +76,13 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   };
 
+  const removeThumbnail = () => {
+    // Revert to the original server/file thumbnail
+    onUpdateVideo({ ...video, thumbnail: originalThumbnailRef.current });
+  };
+
   const stepFrame = (forward: boolean) => {
     if (videoRef.current) {
-        // Approx 1 frame at 24fps
         const delta = 0.042; 
         videoRef.current.currentTime += forward ? delta : -delta;
     }
@@ -73,17 +92,26 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       onUpdateVideo({ ...video, isFavorite: !video.isFavorite });
   };
 
-  const handleSpeedChange = (speed: number) => {
-      setPlaybackSpeed(speed);
+  const cyclePlaybackSpeed = () => {
+      const speeds = [0.25, 0.5, 1, 1.25, 1.5, 2];
+      const currentIndex = speeds.indexOf(playbackSpeed);
+      const nextSpeed = speeds[(currentIndex + 1) % speeds.length];
+      
+      setPlaybackSpeed(nextSpeed);
       if (videoRef.current) {
-          videoRef.current.playbackRate = speed;
+          videoRef.current.playbackRate = nextSpeed;
       }
-      setShowSpeedMenu(false);
   };
 
   const toggleSubtitles = () => {
-      setSubtitlesEnabled(!subtitlesEnabled);
-      // Logic for actual VTT tracks would go here
+    if (!videoRef.current) return;
+    const newState = !subtitlesEnabled;
+    setSubtitlesEnabled(newState);
+
+    // Loop through text tracks and enable/disable them
+    for (let i = 0; i < videoRef.current.textTracks.length; i++) {
+       videoRef.current.textTracks[i].mode = newState ? 'showing' : 'hidden';
+    }
   };
 
   const displayName = video.name.replace(/\.[^/.]+$/, "");
@@ -103,19 +131,32 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
               src={video.url} 
               controls 
               autoPlay 
+              crossOrigin="anonymous" 
               className="w-full h-full"
-            />
-            {subtitlesEnabled && (
-                <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-black/60 text-white px-4 py-1 rounded text-lg">
-                    [Subtitles On - No Tracks Found]
+            >
+                {/* RENDER THE SUBTITLE TRACKS */}
+                {video.subtitles && video.subtitles.map((sub, index) => (
+                    <track 
+                        key={index}
+                        kind="subtitles"
+                        src={sub.src}
+                        srcLang={sub.lang}
+                        label={sub.label}
+                        default={index === 0 && subtitlesEnabled}
+                    />
+                ))}
+            </video>
+            
+            {subtitlesEnabled && !hasSubtitles && (
+                <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-black/60 text-white px-4 py-1 rounded text-lg pointer-events-none">
+                    [No Subtitle File Found]
                 </div>
             )}
           </div>
         </div>
 
-        {/* Controls Bar for Frames/Thumbnails/Speed */}
+        {/* Controls Bar */}
         <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
-            {/* Video Navigation Buttons */}
             <div className="flex items-center gap-2">
                 <button 
                     onClick={onPrevVideo} 
@@ -135,48 +176,46 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </button>
             </div>
 
-            {/* Playback Tools */}
             <div className="flex items-center gap-2">
-                {/* Speed Control */}
-                <div className="relative">
-                    <button onClick={() => setShowSpeedMenu(!showSpeedMenu)} className="glass-button p-2 rounded-lg text-glass-subtext hover:text-white flex items-center gap-1" title="Playback Speed">
-                        <SpeedIcon />
-                        <span className="text-xs font-bold w-6">{playbackSpeed}x</span>
-                    </button>
-                    {showSpeedMenu && (
-                        <div className="absolute bottom-full left-0 mb-2 w-24 glass-panel rounded-lg shadow-xl py-1 z-50 flex flex-col-reverse">
-                            {[0.5, 1, 1.25, 1.5, 2].map(speed => (
-                                <button 
-                                    key={speed} 
-                                    onClick={() => handleSpeedChange(speed)}
-                                    className={`px-3 py-1.5 text-xs font-medium text-left hover:bg-white/10 ${speed === playbackSpeed ? 'text-brand-primary' : 'text-glass-subtext'}`}
-                                >
-                                    {speed}x
-                                </button>
-                            ))}
-                        </div>
-                    )}
-                </div>
+                {/* Speed Control (Cycle on click) */}
+                <button 
+                    onClick={cyclePlaybackSpeed} 
+                    className="glass-button p-2 rounded-lg text-glass-subtext hover:text-white flex items-center gap-1 min-w-[70px] justify-center" 
+                    title="Cycle Playback Speed"
+                >
+                    <SpeedIcon />
+                    <span className="text-xs font-bold">{playbackSpeed}x</span>
+                </button>
 
-                {/* Subtitles Toggle */}
-                <button onClick={toggleSubtitles} className={`glass-button p-2 rounded-lg transition-colors ${subtitlesEnabled ? 'text-brand-primary bg-brand-primary/10 border-brand-primary/30' : 'text-glass-subtext hover:text-white'}`} title="Toggle Subtitles">
+                {/* Subtitle Toggle Button */}
+                <button 
+                    onClick={toggleSubtitles} 
+                    disabled={!hasSubtitles}
+                    className={`glass-button p-2 rounded-lg transition-colors ${subtitlesEnabled ? 'text-brand-primary bg-brand-primary/10 border-brand-primary/30' : 'text-glass-subtext hover:text-white'} ${!hasSubtitles ? 'opacity-30' : ''}`} 
+                    title={hasSubtitles ? "Toggle Subtitles" : "No subtitles available"}
+                >
                     <CCIcon />
                 </button>
 
                  <div className="w-px h-6 bg-white/10 mx-1"></div>
 
-                <button onClick={() => stepFrame(false)} className="glass-button p-2 rounded-lg text-glass-subtext hover:text-white" title="Previous Frame">
+                <button onClick={() => stepFrame(false)} className="glass-button p-2 rounded-lg text-glass-subtext hover:text-white">
                     <StepBackIcon />
                 </button>
-                <button onClick={() => stepFrame(true)} className="glass-button p-2 rounded-lg text-glass-subtext hover:text-white" title="Next Frame">
+                <button onClick={() => stepFrame(true)} className="glass-button p-2 rounded-lg text-glass-subtext hover:text-white">
                     <StepForwardIcon />
                 </button>
                 
                 <div className="w-px h-6 bg-white/10 mx-1"></div>
                 
-                <button onClick={captureThumbnail} className="flex items-center gap-2 glass-button px-3 py-2 rounded-lg text-xs font-medium text-glass-subtext hover:text-brand-accent transition-colors" title="Set current frame as thumbnail">
-                    <CameraIcon />
-                    <span className="hidden sm:inline">Thumbnail</span>
+                {/* Thumbnail Button (Toggle Capture/Remove) */}
+                <button 
+                    onClick={isCustomThumbnail ? removeThumbnail : captureThumbnail} 
+                    className={`flex items-center gap-2 glass-button px-3 py-2 rounded-lg text-xs font-medium transition-colors ${isCustomThumbnail ? 'text-red-400 hover:bg-red-500/10 hover:text-red-300' : 'text-glass-subtext hover:text-brand-accent'}`}
+                    title={isCustomThumbnail ? "Revert to original thumbnail" : "Set current frame as thumbnail"}
+                >
+                    {isCustomThumbnail ? <XIcon /> : <CameraIcon />}
+                    <span className="hidden sm:inline">{isCustomThumbnail ? 'Remove Thumb' : 'Thumbnail'}</span>
                 </button>
             </div>
         </div>
@@ -184,7 +223,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         {/* Title & Actions */}
         <div className="mt-4 mb-6">
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white mb-4">{displayName}</h1>
-          
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 pb-6 border-b border-white/5">
             <div className="flex items-center gap-4">
                <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-brand-primary to-brand-accent shadow-lg ring-2 ring-black"></div>
@@ -192,19 +230,14 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                  <h3 className="font-bold text-base text-white">Local Drive</h3>
                  <p className="text-xs text-glass-subtext font-medium tracking-wide">Administrator</p>
                </div>
-               <button className="bg-white text-black px-6 py-2 rounded-full text-sm font-bold hover:bg-gray-200 transition-colors ml-2 shadow-[0_0_15px_rgba(255,255,255,0.3)]">
-                 Subscribe
-               </button>
             </div>
 
             <div className="flex items-center gap-3 relative">
-               {/* Favorite */}
                <button onClick={toggleFavorite} className={`flex items-center gap-2 glass-button px-5 py-2.5 rounded-full text-sm font-medium transition-colors ${video.isFavorite ? 'text-brand-accent border-brand-accent/30 bg-brand-accent/10' : ''}`}>
                   <StarIcon filled={video.isFavorite} />
                   <span>Favorite</span>
                </button>
                
-               {/* Add to Playlist */}
                <div className="relative">
                  <button onClick={() => setShowPlaylistMenu(!showPlaylistMenu)} className="flex items-center gap-2 glass-button px-5 py-2.5 rounded-full text-sm font-medium">
                     <PlaylistPlusIcon />
@@ -225,7 +258,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                         {p.name}
                                     </div>
                                 ))}
-                                {playlists.length === 0 && <div className="px-4 py-3 text-xs italic opacity-50 text-glass-subtext">No playlists yet</div>}
                             </div>
                             <div className="mt-1 pt-1 border-t border-white/10">
                                 <button 
@@ -240,20 +272,17 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                  )}
                </div>
 
-                {/* Save Video (Download) */}
                <a 
                  href={video.url} 
                  download={video.name}
                  className="flex items-center gap-2 glass-button px-5 py-2.5 rounded-full text-sm font-medium hover:text-white hover:bg-white/10 transition-colors"
-                 title="Save Video to Disk"
                >
                    <DownloadIcon />
                    <span>Save</span>
                </a>
 
-               {/* Share Button */}
                <div className="relative">
-                    <button onClick={() => setShowShareMenu(!showShareMenu)} className="glass-button p-2.5 rounded-full" title="Share">
+                    <button onClick={() => setShowShareMenu(!showShareMenu)} className="glass-button p-2.5 rounded-full">
                         <ShareIcon />
                     </button>
                     {showShareMenu && (
@@ -268,13 +297,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                     <LinkIcon />
                                     <span>Copy Link</span>
                                 </button>
-                                <button 
-                                    onClick={() => { onCreatePlaylist(); setShowShareMenu(false); }}
-                                    className="w-full text-left px-4 py-3 hover:bg-white/10 text-sm flex items-center gap-3 text-brand-secondary font-bold"
-                                >
-                                    <PlaylistPlusIcon />
-                                    <span>Create Playlist</span>
-                                </button>
                             </div>
                         </>
                     )}
@@ -283,7 +305,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </div>
         </div>
 
-        {/* Description Box */}
         <div className="bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl p-4 transition-colors">
            <div className="flex items-center gap-3 text-sm font-bold mb-3 text-white/90">
              <span>{views}</span>
@@ -301,7 +322,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         </div>
       </div>
 
-      {/* Sidebar: Recommendations */}
       <div className="lg:col-span-1">
          <h3 className="text-lg font-bold mb-5 text-white/90 border-l-4 border-brand-primary pl-4">Up Next</h3>
          <div className="flex flex-col gap-4">

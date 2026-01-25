@@ -35,7 +35,6 @@ const App = () => {
 
     const fetchLocalVideos = async () => {
         try {
-            // 1. Request data from our new Node/SQLite backend
             const response = await fetch('/api/videos');
 
             if (!response.ok) {
@@ -44,10 +43,12 @@ const App = () => {
 
             const data = await response.json();
 
-            // 2. The backend returns { videos: [...] }
-            const dbVideos = data.videos;
+            const dbVideos = data.videos.map((v: any) => ({
+                ...v,
+                url: v.path,
+                subtitles: v.subtitles || [] 
+            }));
 
-            // 3. Organize videos into folders for the Sidebar
             const structure: FolderStructure = {};
             dbVideos.forEach((video: VideoFile) => {
                 const folderName = video.folder || 'Local Library';
@@ -57,11 +58,9 @@ const App = () => {
                 structure[folderName].push(video);
             });
 
-            // 4. Update the App state
             setAllVideos(dbVideos);
             setFolderStructure(structure);
 
-            // If we found videos, show the home screen
             if (dbVideos.length > 0) {
                 setViewState(ViewState.HOME);
             }
@@ -71,7 +70,6 @@ const App = () => {
         }
     };
 
-    // Trigger the fetch when the app first loads
     useEffect(() => {
         fetchLocalVideos();
     }, []);
@@ -79,10 +77,7 @@ const App = () => {
     const handleScanLibrary = async () => {
         setIsScanning(true);
         try {
-            // 1. Tell server to scan
             await fetch('/api/scan', { method: 'POST' });
-
-            // 2. Fetch the updated list
             await fetchLocalVideos();
         } catch (e) {
             console.error("Scan failed", e);
@@ -91,7 +86,6 @@ const App = () => {
         }
     };
 
-    // Handle file selection
     const handleFilesSelected = (fileList: FileList) => {
         allVideos.forEach(v => {
             if (v.file) URL.revokeObjectURL(v.url);
@@ -180,10 +174,9 @@ const App = () => {
 
         setCurrentVideo(video);
         setViewState(ViewState.WATCH);
-        // On mobile or watch view, auto-close sidebar when selecting a video
-        if (window.innerWidth < 768) {
-            setIsSidebarOpen(false);
-        }
+        
+        // 1. ALWAYS collapse sidebar when selecting a video for maximum immersion
+        setIsSidebarOpen(false);
     };
 
     const toggleSelection = (id: string) => {
@@ -286,12 +279,12 @@ const App = () => {
     return (
         <div className="h-screen w-full text-glass-text font-sans selection:bg-brand-primary selection:text-white overflow-hidden">
             <Header
-                onTriggerScan={handleScanLibrary} // Pass the new function
+                onTriggerScan={handleScanLibrary} 
                 searchTerm={searchTerm}
                 onSearchChange={setSearchTerm}
                 toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
                 goHome={handleGoHome}
-                isScanning={isScanning} // Pass the loading state
+                isScanning={isScanning} 
             />
 
             <div className="pt-16 h-full flex relative">
@@ -308,8 +301,10 @@ const App = () => {
                     onCreatePlaylist={handleCreatePlaylist}
                     onClose={() => setIsSidebarOpen(false)}
                 />
-
-                <main className={`flex-1 h-full overflow-y-auto transition-all duration-300 ${viewState !== ViewState.WATCH && isSidebarOpen ? 'md:ml-64' : ''}`}>
+                
+                {/* 2. THE LAYOUT FIX: Remove 'viewState !== ViewState.WATCH'. 
+                    If sidebar is open, we apply margin. This creates the "Push" effect. */}
+                <main className={`flex-1 h-full overflow-y-auto transition-all duration-300 ${isSidebarOpen ? 'md:ml-64' : ''}`}>
 
                     {allVideos.length === 0 && (
                         <div className="flex flex-col items-center justify-center h-full text-center px-6 animate-fade-in-up">
