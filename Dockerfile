@@ -1,21 +1,19 @@
-# Use an official Node.js runtime as a parent image
-FROM node:20-alpine
+# Use standard Node 20 (Debian-based) to ensure SQLite builds easily
+FROM node:20
 
-# Set the working directory inside the container
 WORKDIR /app
 
-# Copy package files first to install dependencies
-# (This caches the install step so rebuilds are faster)
+# Copy package files
 COPY package.json package-lock.json* ./
 
-# Install dependencies
+# Install dependencies (including SQLite compilation)
 RUN npm install
 
-# Copy the rest of your app's source code
+# Copy source
 COPY . .
 
-# Expose the port your app runs on (matching your vite.config.ts)
-EXPOSE 3000
+# Expose both Frontend and Backend ports
+EXPOSE 3000 3001
 
-# The command to start your app
+# Run the command that starts BOTH servers
 CMD ["npm", "run", "dev"]
