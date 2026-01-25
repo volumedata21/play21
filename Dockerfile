@@ -1,19 +1,20 @@
-# Use standard Node 20 (Debian-based) to ensure SQLite builds easily
+# Use standard Node 20 (Debian-based)
 FROM node:20
+
+# Install FFmpeg (The tool that can "see" video frames)
+RUN apt-get update && apt-get install -y ffmpeg
 
 WORKDIR /app
 
 # Copy package files
 COPY package.json package-lock.json* ./
 
-# Install dependencies (including SQLite compilation)
+# Install dependencies
 RUN npm install
 
 # Copy source
 COPY . .
 
-# Expose both Frontend and Backend ports
 EXPOSE 3000 3001
 
-# Run the command that starts BOTH servers
 CMD ["npm", "run", "dev"]
