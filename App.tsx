@@ -52,12 +52,20 @@ const App = () => {
 
             // 3. Organize videos into folders for the Sidebar
             const structure: FolderStructure = {};
+            
             dbVideos.forEach((video: VideoFile) => {
-                const folderName = video.folder || 'Local Library';
-                if (!structure[folderName]) {
-                    structure[folderName] = [];
+                const fullFolderPath = video.folder || 'Local Library';
+                
+                // SPLIT LOGIC: Get only the top-level folder name
+                // If path is "Movies/Action/SciFi", this grabs just "Movies"
+                // We split by both forward slash (/) and backslash (\) just to be safe
+                const rootFolder = fullFolderPath.split(/[/\\]/)[0];
+
+                if (!structure[rootFolder]) {
+                    structure[rootFolder] = [];
                 }
-                structure[folderName].push(video);
+                // Add the video to this top-level bucket, regardless of how deep it actually is
+                structure[rootFolder].push(video);
             });
 
             // 4. Update the App state
@@ -125,9 +133,13 @@ const App = () => {
         setSelectedVideoIds(new Set());
     };
 
-    const displayedVideos = useMemo(() => {
+    // --- UPDATED NAVIGATION LOGIC ---
+    const { displayedVideos, subFolders, canGoUp } = useMemo(() => {
         let videos = allVideos;
+        let foundFolders: string[] = [];
+        let showGoUp = false;
 
+        // 1. Filter by View State (Favorites, History, etc)
         if (viewState === ViewState.FAVORITES) {
             videos = videos.filter(v => v.isFavorite);
         } else if (viewState === ViewState.HISTORY) {
@@ -135,45 +147,78 @@ const App = () => {
             videos = [...historyVideos].reverse();
         } else if (viewState === ViewState.PLAYLIST && selectedPlaylistId) {
             const playlist = playlists.find(p => p.id === selectedPlaylistId);
-            if (playlist) {
-                videos = playlist.videoIds.map(id => allVideos.find(v => v.id === id)).filter(Boolean) as VideoFile[];
-            } else {
-                videos = [];
-            }
-        } else if (selectedFolder) {
-            videos = videos.filter(v => v.folder === selectedFolder);
+            videos = playlist ? playlist.videoIds.map(id => allVideos.find(v => v.id === id)).filter(Boolean) as VideoFile[] : [];
+        } 
+        
+        // 2. FOLDER NAVIGATION LOGIC (Only active on Home view)
+        else if (selectedFolder) {
+            // Logic: Show ALL videos in this folder AND its subfolders (Recursive)
+            // But also calculate which subfolders exist so we can show navigation buttons
+            
+            showGoUp = selectedFolder.includes('/'); 
+            
+            const folderSet = new Set<string>();
+
+            // Filter videos to only those in this tree
+            videos = videos.filter(v => {
+                const isExactMatch = v.folder === selectedFolder;
+                const isSubFolder = v.folder.startsWith(selectedFolder + '/'); // Ensure "Use" doesn't match "User"
+
+                if (isExactMatch || isSubFolder) {
+                    // It belongs in this view! 
+                    
+                    // If it is a subfolder, let's grab the folder name for the UI buttons
+                    if (isSubFolder) {
+                        const remainder = v.folder.substring(selectedFolder.length + 1);
+                        const nextSegment = remainder.split('/')[0];
+                        if (nextSegment) folderSet.add(nextSegment);
+                    }
+                    return true;
+                }
+                return false;
+            });
+
+            foundFolders = Array.from(folderSet).sort();
         }
 
+        // 3. Search Filter (Global or Contextual)
         if (searchTerm) {
             const lower = searchTerm.toLowerCase();
             videos = videos.filter(v => v.name.toLowerCase().includes(lower));
         }
 
+        // 4. Sorting
         const sortedVideos = [...videos].sort((a, b) => {
             switch (sortOption) {
-                case SortOption.NAME_ASC:
-                    return a.name.localeCompare(b.name);
-                case SortOption.NAME_DESC:
-                    return b.name.localeCompare(a.name);
-                case SortOption.DATE_NEWEST:
-                    return (b.createdAt || 0) - (a.createdAt || 0);
-                case SortOption.DATE_OLDEST:
-                    return (a.createdAt || 0) - (b.createdAt || 0);
-                case SortOption.VIEWS_MOST:
-                    return (b.viewsCount || 0) - (a.viewsCount || 0);
-                case SortOption.VIEWS_LEAST:
-                    return (a.viewsCount || 0) - (b.viewsCount || 0);
-                case SortOption.DURATION_LONGEST:
-                    return (b.duration || 0) - (a.duration || 0);
-                case SortOption.DURATION_SHORTEST:
-                    return (a.duration || 0) - (b.duration || 0);
-                default:
-                    return 0;
+                case SortOption.NAME_ASC: return a.name.localeCompare(b.name);
+                case SortOption.NAME_DESC: return b.name.localeCompare(a.name);
+                case SortOption.DATE_NEWEST: return (b.createdAt || 0) - (a.createdAt || 0);
+                case SortOption.DATE_OLDEST: return (a.createdAt || 0) - (b.createdAt || 0);
+                case SortOption.VIEWS_MOST: return (b.viewsCount || 0) - (a.viewsCount || 0);
+                case SortOption.VIEWS_LEAST: return (a.viewsCount || 0) - (b.viewsCount || 0);
+                case SortOption.DURATION_LONGEST: return (b.duration || 0) - (a.duration || 0);
+                case SortOption.DURATION_SHORTEST: return (a.duration || 0) - (b.duration || 0);
+                default: return 0;
             }
         });
 
-        return sortedVideos;
+        return { displayedVideos: sortedVideos, subFolders: foundFolders, canGoUp: showGoUp };
     }, [allVideos, selectedFolder, searchTerm, viewState, history, playlists, selectedPlaylistId, sortOption]);
+
+    // --- NEW NAVIGATION HANDLERS ---
+    
+    const handleEnterFolder = (subFolderName: string) => {
+        // e.g. "Movies" + "/" + "Action"
+        const newPath = `${selectedFolder}/${subFolderName}`;
+        setSelectedFolder(newPath);
+    };
+
+    const handleGoUp = () => {
+        if (!selectedFolder) return;
+        // "Movies/Action" -> ["Movies", "Action"] -> slice -> ["Movies"] -> join -> "Movies"
+        const parent = selectedFolder.split('/').slice(0, -1).join('/');
+        setSelectedFolder(parent);
+    };
 
     const handleVideoSelect = (video: VideoFile) => {
         setHistory(prev => {
@@ -376,6 +421,50 @@ const App = () => {
                                 </div>
                             </div>
 
+                            {/* --- NAVIGATION HEADER (Go Up Button) --- */}
+                            {canGoUp && (
+                                <button 
+                                    onClick={handleGoUp}
+                                    className="mb-6 flex items-center gap-2 text-sm font-bold text-brand-primary hover:text-white transition-colors bg-white/5 hover:bg-white/10 px-4 py-2 rounded-lg self-start"
+                                >
+                                    <svg className="w-4 h-4 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                                    <span>Back to Parent Folder</span>
+                                </button>
+                            )}
+
+                            {/* --- FOLDER GRID --- */}
+                            {/* --- FOLDER GRID (Compact) --- */}
+                            {subFolders.length > 0 && (
+                                <div className="mb-8">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <h3 className="text-[10px] font-bold text-glass-subtext uppercase tracking-widest">Subfolders</h3>
+                                        <div className="h-px bg-white/5 flex-1"></div>
+                                    </div>
+                                    
+                                    {/* Updated Grid: More columns, smaller gap */}
+                                    <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-3">
+                                        {subFolders.map(folder => (
+                                            <div 
+                                                key={folder}
+                                                onClick={() => handleEnterFolder(folder)}
+                                                className="group relative aspect-[4/3] bg-white/5 hover:bg-white/10 border border-white/5 hover:border-brand-primary/50 rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all overflow-hidden"
+                                            >
+                                                {/* Smaller Folder Icon */}
+                                                <div className="mb-1.5 text-brand-primary opacity-60 group-hover:opacity-100 group-hover:scale-110 transition-all">
+                                                    <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+                                                </div>
+                                                
+                                                {/* Smaller Text */}
+                                                <span className="text-xs font-medium text-white/70 group-hover:text-white truncate max-w-[90%] px-1 text-center">
+                                                    {folder}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* --- VIDEO GRID --- */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-y-10 gap-x-6 pb-20">
                                 {displayedVideos.map(video => (
                                     <VideoCard
