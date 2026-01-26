@@ -187,7 +187,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
     };
 
-    const displayName = video.name.replace(/\.[^/.]+$/, "");
+    const displayName = video.name;
     const views = video.views || formatViews();
     const timeAgo = video.timeAgo || formatTimeAgo();
 

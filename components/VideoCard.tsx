@@ -126,7 +126,7 @@ const VideoCard: React.FC<VideoCardProps> = ({ video, isSelected = false, onSele
         {/* Texts */}
         <div className="flex flex-col gap-0.5">
           <h3 className="text-[15px] font-semibold text-white/90 line-clamp-2 leading-snug group-hover:text-brand-primary transition-colors">
-            {video.name.replace(/\.[^/.]+$/, "")}
+            {video.name}
           </h3>
           <div className="text-xs text-glass-subtext flex flex-col gap-0.5">
             <span className="font-medium hover:text-white transition-colors">{video.folder}</span>

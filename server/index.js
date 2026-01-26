@@ -99,7 +99,11 @@ function parseNfo(nfoPath) {
         .replace(/&lt;/g, '<')
         .replace(/&gt;/g, '>')
         .replace(/&quot;/g, '"')
-        .replace(/&apos;/g, "'");
+        .replace(/&apos;/g, "'")
+        // NEW: Handle numeric entities like &#39; (apostrophe)
+        .replace(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec))
+        // NEW: Handle hex entities like &#x27;
+        .replace(/&#x([0-9A-Fa-f]+);/g, (match, hex) => String.fromCharCode(parseInt(hex, 16)));
     };
 
     return {
@@ -382,8 +386,15 @@ app.get('/api/videos', (req, res) => {
     isFavorite: Boolean(v.is_favorite),
     viewsCount: v.views,
     views: `${v.views} views`,
-    // Use release_date if available, otherwise fallback to file creation date
-    timeAgo: v.release_date ? v.release_date.split('T')[0] : new Date(v.created_at).toLocaleDateString(),
+    
+    // --- UPDATED DATE FORMATTING ---
+    // 1. Checks if there is a release date.
+    // 2. Uses 'en-US' with 'long' month to get "October 11, 2025".
+    // 3. Uses 'UTC' timezone to ensure the date doesn't shift backwards.
+    timeAgo: v.release_date 
+        ? new Date(v.release_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }) 
+        : new Date(v.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+    
     thumbnail: v.thumbnail || null,
     durationStr: formatDuration(v.duration), 
     duration: v.duration,
