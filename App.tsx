@@ -45,10 +45,24 @@ const App = () => {
             const data = await response.json();
 
             // 2. The backend returns { videos: [...] }
-            const dbVideos = data.videos.map((v: any) => ({
-                ...v,
-                url: v.path
-            }));
+            // 2. The backend returns { videos: [...] }
+            const dbVideos = data.videos.map((v: any) => {
+                // SAFETY: Parse subtitles from JSON string to Array
+                let parsedSubtitles = [];
+                try {
+                    if (v.subtitles && typeof v.subtitles === 'string') {
+                        parsedSubtitles = JSON.parse(v.subtitles);
+                    }
+                } catch (e) {
+                    console.warn("Failed to parse subtitles for", v.name);
+                }
+
+                return {
+                    ...v,
+                    url: v.path,
+                    subtitles: parsedSubtitles
+                };
+            });
 
             // 3. Organize videos into folders for the Sidebar
             const structure: FolderStructure = {};
