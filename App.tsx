@@ -33,17 +33,29 @@ const App = () => {
     // DATABASE CONNECTION CODE
     // ----------------------------------------------------------------
 
-    const fetchLocalVideos = async () => {
+    const fetchAllData = async () => {
         try {
-            // 1. Request data from our new Node/SQLite backend
-            const response = await fetch('/api/videos');
+            // 1. Fetch Videos
+            const vidRes = await fetch('/api/videos');
+            const vidData = await vidRes.json();
+            
+            const dbVideos = vidData.videos.map((v: any) => ({
+                ...v,
+                url: v.path,
+                subtitles: v.subtitles || [] 
+            }));
 
-            if (!response.ok) {
-                throw new Error('Failed to connect to backend');
-            }
+            // 2. Fetch History (NEW)
+            const histRes = await fetch('/api/history');
+            const histData = await histRes.json();
+            setHistory(histData.history || []);
 
-            const data = await response.json();
+            // 3. Fetch Playlists (NEW)
+            const plRes = await fetch('/api/playlists');
+            const plData = await plRes.json();
+            setPlaylists(plData.playlists || []);
 
+<<<<<<< HEAD
             // 2. The backend returns { videos: [...] }
             const dbVideos = data.videos.map((v: any) => ({
                 ...v,
@@ -51,6 +63,9 @@ const App = () => {
             }));
 
             // 3. Organize videos into folders for the Sidebar
+=======
+            // Organize folders
+>>>>>>> d7b5da25a622d06dad48ee6dda502f79d1cd140d
             const structure: FolderStructure = {};
             dbVideos.forEach((video: VideoFile) => {
                 const folderName = video.folder || 'Local Library';
@@ -60,33 +75,29 @@ const App = () => {
                 structure[folderName].push(video);
             });
 
-            // 4. Update the App state
             setAllVideos(dbVideos);
             setFolderStructure(structure);
 
-            // If we found videos, show the home screen
-            if (dbVideos.length > 0) {
-                setViewState(ViewState.HOME);
+            // Set initial view state if we have videos and are at home
+            if (dbVideos.length > 0 && viewState === ViewState.HOME) {
+               // Logic to stay on home
             }
 
         } catch (error) {
-            console.log("Backend not connected yet (or empty). Waiting...", error);
+            console.log("Backend connection issue:", error);
         }
     };
 
     // Trigger the fetch when the app first loads
     useEffect(() => {
-        fetchLocalVideos();
+        fetchAllData();
     }, []);
 
     const handleScanLibrary = async () => {
         setIsScanning(true);
         try {
-            // 1. Tell server to scan
             await fetch('/api/scan', { method: 'POST' });
-
-            // 2. Fetch the updated list
-            await fetchLocalVideos();
+            await fetchAllData(); // Reload everything after scan
         } catch (e) {
             console.error("Scan failed", e);
         } finally {
@@ -94,12 +105,11 @@ const App = () => {
         }
     };
 
-    // Handle file selection
+    // Handle file selection (Legacy browser fallback)
     const handleFilesSelected = (fileList: FileList) => {
         allVideos.forEach(v => {
             if (v.file) URL.revokeObjectURL(v.url);
         });
-
         const { videos, structure } = processFiles(fileList);
         setAllVideos(videos);
         setFolderStructure(structure);
@@ -112,7 +122,6 @@ const App = () => {
         allVideos.forEach(v => {
             if (v.file) URL.revokeObjectURL(v.url);
         });
-
         const { videos, structure } = getMockData();
         setAllVideos(videos);
         setFolderStructure(structure);
@@ -131,8 +140,9 @@ const App = () => {
         if (viewState === ViewState.FAVORITES) {
             videos = videos.filter(v => v.isFavorite);
         } else if (viewState === ViewState.HISTORY) {
+            // Filter history IDs that actually exist in allVideos
             const historyVideos = history.map(id => allVideos.find(v => v.id === id)).filter(Boolean) as VideoFile[];
-            videos = [...historyVideos].reverse();
+            videos = [...historyVideos]; // History is already sorted by server
         } else if (viewState === ViewState.PLAYLIST && selectedPlaylistId) {
             const playlist = playlists.find(p => p.id === selectedPlaylistId);
             if (playlist) {
@@ -149,43 +159,51 @@ const App = () => {
             videos = videos.filter(v => v.name.toLowerCase().includes(lower));
         }
 
-        const sortedVideos = [...videos].sort((a, b) => {
-            switch (sortOption) {
-                case SortOption.NAME_ASC:
-                    return a.name.localeCompare(b.name);
-                case SortOption.NAME_DESC:
-                    return b.name.localeCompare(a.name);
-                case SortOption.DATE_NEWEST:
-                    return (b.createdAt || 0) - (a.createdAt || 0);
-                case SortOption.DATE_OLDEST:
-                    return (a.createdAt || 0) - (b.createdAt || 0);
-                case SortOption.VIEWS_MOST:
-                    return (b.viewsCount || 0) - (a.viewsCount || 0);
-                case SortOption.VIEWS_LEAST:
-                    return (a.viewsCount || 0) - (b.viewsCount || 0);
-                case SortOption.DURATION_LONGEST:
-                    return (b.duration || 0) - (a.duration || 0);
-                case SortOption.DURATION_SHORTEST:
-                    return (a.duration || 0) - (b.duration || 0);
-                default:
-                    return 0;
-            }
-        });
+        // Only apply sort if NOT in history (history has its own timeline order)
+        if (viewState !== ViewState.HISTORY) {
+            const sortedVideos = [...videos].sort((a, b) => {
+                switch (sortOption) {
+                    case SortOption.NAME_ASC: return a.name.localeCompare(b.name);
+                    case SortOption.NAME_DESC: return b.name.localeCompare(a.name);
+                    case SortOption.DATE_NEWEST: return (b.createdAt || 0) - (a.createdAt || 0);
+                    case SortOption.DATE_OLDEST: return (a.createdAt || 0) - (b.createdAt || 0);
+                    case SortOption.VIEWS_MOST: return (b.viewsCount || 0) - (a.viewsCount || 0);
+                    case SortOption.VIEWS_LEAST: return (a.viewsCount || 0) - (b.viewsCount || 0);
+                    case SortOption.DURATION_LONGEST: return (b.duration || 0) - (a.duration || 0);
+                    case SortOption.DURATION_SHORTEST: return (a.duration || 0) - (b.duration || 0);
+                    default: return 0;
+                }
+            });
+            return sortedVideos;
+        }
+        return videos;
 
-        return sortedVideos;
     }, [allVideos, selectedFolder, searchTerm, viewState, history, playlists, selectedPlaylistId, sortOption]);
 
-    const handleVideoSelect = (video: VideoFile) => {
-        setHistory(prev => {
-            const newHistory = prev.filter(id => id !== video.id);
-            return [...newHistory, video.id];
-        });
-
+    const handleVideoSelect = async (video: VideoFile) => {
         setCurrentVideo(video);
         setViewState(ViewState.WATCH);
+<<<<<<< HEAD
 
         // FIX: Always close sidebar when playing a video, regardless of screen size
         setIsSidebarOpen(false);
+=======
+        setIsSidebarOpen(false); // Auto-collapse sidebar
+
+        // PERSIST HISTORY (NEW)
+        try {
+            await fetch('/api/history', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ videoId: video.id })
+            });
+            // Update local state to match
+            setHistory(prev => {
+                const newHistory = prev.filter(id => id !== video.id);
+                return [video.id, ...newHistory];
+            });
+        } catch (e) { console.error("Failed to save history", e); }
+>>>>>>> d7b5da25a622d06dad48ee6dda502f79d1cd140d
     };
 
     const toggleSelection = (id: string) => {
@@ -205,14 +223,26 @@ const App = () => {
         setShowBulkPlaylistMenu(false);
     };
 
-    const handleBulkAddToPlaylist = (playlistId: string) => {
+    const handleBulkAddToPlaylist = async (playlistId: string) => {
+        const idsToAdd = Array.from(selectedVideoIds);
+        
+        // Optimistic UI Update
         setPlaylists(prev => prev.map(p => {
             if (p.id === playlistId) {
-                const newIds = new Set([...p.videoIds, ...Array.from(selectedVideoIds)]);
+                const newIds = new Set([...p.videoIds, ...idsToAdd]);
                 return { ...p, videoIds: Array.from(newIds) };
             }
             return p;
         }));
+        
+        // Server Update (NEW)
+        for (const videoId of idsToAdd) {
+             await fetch(`/api/playlists/${playlistId}/videos`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ videoId })
+            });
+        }
         clearSelection();
     };
 
@@ -245,30 +275,58 @@ const App = () => {
     }, [currentVideo, displayedVideos]);
 
 
-    const handleUpdateVideo = (updated: VideoFile) => {
+    const handleUpdateVideo = async (updated: VideoFile) => {
+        // Optimistic Update
         setAllVideos(prev => prev.map(v => v.id === updated.id ? updated : v));
         setCurrentVideo(updated);
-    };
 
-    const handleCreatePlaylist = () => {
-        const name = window.prompt("Enter Playlist Name:");
-        if (name) {
-            const newPlaylist: Playlist = {
-                id: `pl-${Date.now()}`,
-                name,
-                videoIds: []
-            };
-            setPlaylists([...playlists, newPlaylist]);
+        // PERSIST FAVORITES (NEW)
+        if (updated.isFavorite !== undefined) {
+             try {
+                await fetch(`/api/videos/${updated.id}/favorite`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ isFavorite: updated.isFavorite })
+                });
+            } catch (e) { console.error("Failed to save favorite", e); }
         }
     };
 
-    const handleAddToPlaylist = (videoId: string, playlistId: string) => {
+    const handleCreatePlaylist = async () => {
+        const name = window.prompt("Enter Playlist Name:");
+        if (name) {
+            try {
+                // Server Update (NEW)
+                const res = await fetch('/api/playlists', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    setPlaylists([...playlists, data.playlist]);
+                }
+            } catch (e) { console.error("Failed to create playlist", e); }
+        }
+    };
+
+    const handleAddToPlaylist = async (videoId: string, playlistId: string) => {
+        // Optimistic
         setPlaylists(prev => prev.map(p => {
             if (p.id === playlistId && !p.videoIds.includes(videoId)) {
                 return { ...p, videoIds: [...p.videoIds, videoId] };
             }
             return p;
         }));
+
+        // Server Update (NEW)
+        try {
+            await fetch(`/api/playlists/${playlistId}/videos`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ videoId })
+            });
+        } catch (e) { console.error("Failed to add to playlist", e); }
     };
 
     const handleGoHome = () => {
@@ -279,7 +337,6 @@ const App = () => {
 
     const relatedVideos = useMemo(() => {
         if (!currentVideo) return [];
-
         const sameFolder = allVideos.filter(v => v.folder === currentVideo.folder && v.id !== currentVideo.id);
         const others = allVideos.filter(v => v.folder !== currentVideo.folder && v.id !== currentVideo.id);
         return [...sameFolder, ...others].slice(0, 10);
@@ -288,12 +345,12 @@ const App = () => {
     return (
         <div className="h-screen w-full text-glass-text font-sans selection:bg-brand-primary selection:text-white overflow-hidden">
             <Header
-                onTriggerScan={handleScanLibrary} // Pass the new function
+                onTriggerScan={handleScanLibrary} 
                 searchTerm={searchTerm}
                 onSearchChange={setSearchTerm}
                 toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
                 goHome={handleGoHome}
-                isScanning={isScanning} // Pass the loading state
+                isScanning={isScanning} 
             />
 
             <div className="pt-16 h-full flex relative">
@@ -311,7 +368,7 @@ const App = () => {
                     onClose={() => setIsSidebarOpen(false)}
                 />
 
-                <main className={`flex-1 h-full overflow-y-auto transition-all duration-300 ${viewState !== ViewState.WATCH && isSidebarOpen ? 'md:ml-64' : ''}`}>
+                <main className={`flex-1 h-full overflow-y-auto transition-all duration-300 ${isSidebarOpen ? 'md:ml-64' : ''}`}>
 
                     {allVideos.length === 0 && (
                         <div className="flex flex-col items-center justify-center h-full text-center px-6 animate-fade-in-up">
