@@ -28,6 +28,7 @@ export interface VideoFile {
   timeAgo?: string; // Pre-formatted for mocks
   createdAt?: number; // Timestamp for sorting
   description?: string; // Static description
+  playbackPosition?: number;
   isFavorite?: boolean;
 }
 

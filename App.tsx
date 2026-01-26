@@ -101,6 +101,44 @@ const App = () => {
         fetchLocalVideos();
     }, []);
 
+    // ... existing useEffect for fetchLocalVideos ...
+
+    // --- NEW: HANDLE BROWSER BACK BUTTON ---
+    useEffect(() => {
+        // 1. Set initial state so we have a base to go back to
+        window.history.replaceState({ view: ViewState.HOME, folder: null, videoId: null }, '');
+
+        const onPopState = (event: PopStateEvent) => {
+            if (event.state) {
+                // Restore View & Folder
+                setViewState(event.state.view || ViewState.HOME);
+                setSelectedFolder(event.state.folder || null);
+                setSelectedPlaylistId(event.state.playlistId || null);
+                
+                // Restore Video (if any)
+                if (event.state.videoId) {
+                    const vid = allVideos.find(v => v.id === event.state.videoId);
+                    if (vid) {
+                        setCurrentVideo(vid);
+                        setIsSidebarOpen(false); // Optional: close sidebar for cinema mode
+                    }
+                } else {
+                    setCurrentVideo(null);
+                    // Re-open sidebar if we just exited a video
+                    if (window.innerWidth >= 768) setIsSidebarOpen(true);
+                }
+            } else {
+                // Fallback to Home if state is empty
+                setViewState(ViewState.HOME);
+                setSelectedFolder(null);
+                setCurrentVideo(null);
+            }
+        };
+
+        window.addEventListener('popstate', onPopState);
+        return () => window.removeEventListener('popstate', onPopState);
+    }, [allVideos]);
+
     const handleScanLibrary = async () => {
         setIsScanning(true);
         try {
@@ -222,16 +260,23 @@ const App = () => {
     // --- NEW NAVIGATION HANDLERS ---
     
     const handleEnterFolder = (subFolderName: string) => {
-        // e.g. "Movies" + "/" + "Action"
         const newPath = `${selectedFolder}/${subFolderName}`;
+        
+        // PUSH HISTORY
+        window.history.pushState({ view: ViewState.HOME, folder: newPath }, '');
+        
         setSelectedFolder(newPath);
     };
 
     const handleGoUp = () => {
         if (!selectedFolder) return;
-        // "Movies/Action" -> ["Movies", "Action"] -> slice -> ["Movies"] -> join -> "Movies"
         const parent = selectedFolder.split('/').slice(0, -1).join('/');
-        setSelectedFolder(parent);
+        const newFolder = parent || null; // If empty string, make it null (Root)
+
+        // PUSH HISTORY
+        window.history.pushState({ view: ViewState.HOME, folder: newFolder }, '');
+
+        setSelectedFolder(newFolder);
     };
 
     const handleVideoSelect = (video: VideoFile) => {
@@ -240,10 +285,11 @@ const App = () => {
             return [...newHistory, video.id];
         });
 
+        // PUSH HISTORY
+        window.history.pushState({ view: ViewState.WATCH, videoId: video.id }, '');
+
         setCurrentVideo(video);
         setViewState(ViewState.WATCH);
-
-        // FIX: Always close sidebar when playing a video, regardless of screen size
         setIsSidebarOpen(false);
     };
 
@@ -331,6 +377,9 @@ const App = () => {
     };
 
     const handleGoHome = () => {
+        // PUSH HISTORY
+        window.history.pushState({ view: ViewState.HOME, folder: null }, '');
+
         setViewState(ViewState.HOME);
         setCurrentVideo(null);
         setSelectedFolder(null);
@@ -343,6 +392,26 @@ const App = () => {
         const others = allVideos.filter(v => v.folder !== currentVideo.folder && v.id !== currentVideo.id);
         return [...sameFolder, ...others].slice(0, 10);
     }, [currentVideo, allVideos]);
+
+    // --- SIDEBAR WRAPPERS ---
+    const handleSidebarViewChange = (newView: ViewState) => {
+        window.history.pushState({ view: newView }, '');
+        setViewState(newView);
+        if (newView === ViewState.HOME) setSelectedFolder(null);
+    };
+
+    const handleSidebarFolderSelect = (folder: string | null) => {
+        window.history.pushState({ view: ViewState.HOME, folder: folder }, '');
+        setViewState(ViewState.HOME);
+        setSelectedFolder(folder);
+    };
+
+    const handleSidebarPlaylistSelect = (id: string) => {
+        window.history.pushState({ view: ViewState.PLAYLIST, playlistId: id }, '');
+        setViewState(ViewState.PLAYLIST);
+        setSelectedPlaylistId(id);
+        if (window.innerWidth < 768) setIsSidebarOpen(false);
+    };
 
     return (
         <div className="h-screen w-full text-glass-text font-sans selection:bg-brand-primary selection:text-white overflow-hidden">
@@ -363,9 +432,12 @@ const App = () => {
                     viewState={viewState}
                     selectedFolder={selectedFolder}
                     selectedPlaylistId={selectedPlaylistId}
-                    onSelectFolder={setSelectedFolder}
-                    onSelectView={setViewState}
-                    onSelectPlaylist={(id) => { setViewState(ViewState.PLAYLIST); setSelectedPlaylistId(id); setIsSidebarOpen(window.innerWidth < 768 ? false : isSidebarOpen); }}
+                    
+                    // UPDATED HANDLERS
+                    onSelectFolder={handleSidebarFolderSelect}
+                    onSelectView={handleSidebarViewChange}
+                    onSelectPlaylist={handleSidebarPlaylistSelect}
+                    
                     onCreatePlaylist={handleCreatePlaylist}
                     onClose={() => setIsSidebarOpen(false)}
                 />
