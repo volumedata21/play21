@@ -105,6 +105,17 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         fetch(`/api/videos/${video.id}/view`, { method: 'POST' });
     }, [video.id]);
 
+    // Resume playback from saved position
+    // Resume playback from saved position
+    useEffect(() => {
+        const vid = videoRef.current;
+        if (vid && video.playbackPosition && video.playbackPosition > 0) {
+            if (video.duration && video.playbackPosition < video.duration - 10) {
+                vid.currentTime = video.playbackPosition;
+            }
+        }
+    }, [video.id]); 
+
     const captureThumbnail = async () => {
         if (!videoRef.current || isProcessingThumb) return;
 
@@ -172,6 +183,24 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         onUpdateVideo({ ...video, isFavorite: !video.isFavorite });
     };
 
+    const saveProgress = () => {
+        if (!videoRef.current) return;
+        const time = videoRef.current.currentTime;
+        // Don't save if we are at the very start
+        if (time > 5) {
+            // 1. Update Server
+            fetch(`/api/videos/${video.id}/progress`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ time })
+            }).catch(e => console.error("Save failed", e));
+
+            // 2. Update Local State (THIS IS THE FIX)
+            // This ensures App.tsx remembers the new time if you navigate away
+            onUpdateVideo({ ...video, playbackPosition: time });
+        }
+    };
+
     const cyclePlaybackSpeed = () => {
         const speeds = [0.25, 0.5, 1, 1.25, 1.5, 2];
         const currentIndex = speeds.indexOf(playbackSpeed);
@@ -212,6 +241,17 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             autoPlay
                             crossOrigin="anonymous"
                             className="w-full h-full"
+                            onPause={saveProgress}
+                            // Reset to 0 when finished
+                            onEnded={() => {
+                                fetch(`/api/videos/${video.id}/progress`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ time: 0 })
+                                });
+                                // FIX: Update local state to 0
+                                onUpdateVideo({ ...video, playbackPosition: 0 });
+                            }}
                         >
                             {/* RENDER THE SUBTITLE TRACKS */}
                             {video.subtitles && video.subtitles.map((sub, index) => (

@@ -43,6 +43,7 @@ db.exec(`
     channel_avatar TEXT,
     genre TEXT,
     release_date TEXT,
+    playback_position INTEGER DEFAULT 0,
     created_at INTEGER,
     views INTEGER DEFAULT 0,
     is_favorite INTEGER DEFAULT 0
@@ -398,6 +399,7 @@ app.get('/api/videos', (req, res) => {
     thumbnail: v.thumbnail || null,
     durationStr: formatDuration(v.duration), 
     duration: v.duration,
+    playbackPosition: v.playback_position || 0,
     channelAvatar: v.channel_avatar
   }));
   
@@ -427,6 +429,19 @@ app.post('/api/videos/:id/view', (req, res) => {
     } catch (e) {
         console.error("Failed to increment view", e);
         res.status(500).json({ error: "Failed to update views" });
+    }
+});
+
+// NEW: Save Playback Progress
+app.post('/api/videos/:id/progress', (req, res) => {
+    const { id } = req.params;
+    const { time } = req.body;
+    try {
+        db.prepare('UPDATE videos SET playback_position = ? WHERE id = ?').run(Math.floor(time), id);
+        res.json({ success: true });
+    } catch (e) {
+        console.error("Failed to save progress", e);
+        res.status(500).json({ error: "Failed to save progress" });
     }
 });
 
