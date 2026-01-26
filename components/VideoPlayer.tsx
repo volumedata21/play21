@@ -301,10 +301,20 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white mb-4">{displayName}</h1>
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 pb-6 border-b border-white/5">
                         <div className="flex items-center gap-4">
-                            {/* Channel Avatar (Placeholder for now) */}
-                            <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-brand-primary to-brand-accent shadow-lg ring-2 ring-black flex items-center justify-center text-xl font-bold text-white">
-                                {video.channel ? video.channel.charAt(0).toUpperCase() : "L"}
-                            </div>
+                            {/* Channel Avatar */}
+                            {/* Channel Avatar */}
+                            {video.channelAvatar ? (
+                                <img
+                                    src={video.channelAvatar}
+                                    className="w-12 h-12 rounded-full object-cover shadow-lg ring-2 ring-black bg-white/10"
+                                    alt={video.channel || "Channel"}
+                                />
+                            ) : (
+                                <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-brand-primary to-brand-accent shadow-lg ring-2 ring-black flex items-center justify-center text-xl font-bold text-white">
+                                    {video.channel ? video.channel.charAt(0).toUpperCase() : "L"}
+                                </div>
+                            )}
+
                             <div>
                                 {/* USE NFO DATA HERE */}
                                 <h3 className="font-bold text-base text-white">

@@ -40,6 +40,7 @@ db.exec(`
     duration INTEGER,
     description TEXT,
     channel TEXT,
+    channel_avatar TEXT,
     genre TEXT,
     release_date TEXT,
     created_at INTEGER,
@@ -127,6 +128,36 @@ function findLocalThumbnail(videoPath) {
 
   for (const file of candidates) {
     if (fs.existsSync(file)) return file;
+  }
+  return null;
+}
+
+// NEW: Recursive search for Channel Avatar (poster/avatar/channel.jpg)
+function findChannelAvatar(startDir) {
+  let currentDir = startDir;
+
+  // We loop upwards until we go past the media root
+  while (currentDir.startsWith(mediaDir)) {
+    try {
+      const files = fs.readdirSync(currentDir);
+      
+      // Look for regex match: poster, avatar, channel (case insensitive) with valid extensions
+      const match = files.find(f => /^(poster|avatar|channel)\.(jpg|jpeg|png|webp)$/i.test(f));
+      
+      if (match) {
+        // Found it! Convert full path to web URL
+        const fullPath = path.join(currentDir, match);
+        const relativePath = path.relative(mediaDir, fullPath);
+        return '/media/' + relativePath.split(path.sep).map(encodeURIComponent).join('/');
+      }
+    } catch (e) {
+      // Ignore errors (like permission issues)
+    }
+
+    // Move up one level
+    const parent = path.dirname(currentDir);
+    if (parent === currentDir) break; // Reached system root (safety break)
+    currentDir = parent;
   }
   return null;
 }
@@ -252,16 +283,17 @@ async function scanMedia() {
   const files = getFilesRecursively(mediaDir);
   const supportedExtensions = ['.mp4', '.webm', '.ogg', '.mov', '.mkv'];
 
-  // UPDATED: Added description, channel, genre, release_date
+  // Description, channel, genre, release_date, channel_avatar
   const insertStmt = db.prepare(`
-    INSERT INTO videos (id, name, filename, folder, path, thumbnail, duration, subtitles, description, channel, genre, release_date, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO videos (id, name, filename, folder, path, thumbnail, duration, subtitles, description, channel, channel_avatar, genre, release_date, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
     thumbnail = excluded.thumbnail,
     duration = excluded.duration,
     subtitles = excluded.subtitles,
     description = excluded.description,
     channel = excluded.channel,
+    channel_avatar = excluded.channel_avatar,
     genre = excluded.genre,
     release_date = excluded.release_date
   `);
@@ -297,6 +329,7 @@ async function scanMedia() {
     const subtitlesJson = await processSubtitles(fullPath, id);
 
     // 4. CHECK FOR NFO FILE
+    // 4. NFO Metadata
     const nfoPath = fullPath.replace(/\.[^/.]+$/, ".nfo");
     let meta = { title: null, plot: null, channel: null, genre: null, aired: null };
     if (fs.existsSync(nfoPath)) {
@@ -304,8 +337,11 @@ async function scanMedia() {
         if (parsed) meta = parsed;
     }
 
-    // 5. Insert with Metadata
-    // Use NFO title if exists, otherwise filename
+    // 5. NEW: Find Channel Avatar (Recursive)
+    // Pass the folder containing the video to start the search
+    const channelAvatarUrl = findChannelAvatar(path.dirname(fullPath));
+
+    // 6. Insert
     const displayName = meta.title || path.basename(fullPath, ext);
 
     insertStmt.run(
@@ -317,10 +353,11 @@ async function scanMedia() {
       thumbUrl,
       Math.floor(duration),
       subtitlesJson,
-      meta.plot,          // description
-      meta.channel,       // channel
-      meta.genre,         // genre
-      meta.aired,         // release_date
+      meta.plot,          
+      meta.channel,    
+      channelAvatarUrl,
+      meta.genre,         
+      meta.aired,         
       Math.floor(stats.birthtimeMs)
     );
   }
@@ -349,7 +386,8 @@ app.get('/api/videos', (req, res) => {
     timeAgo: v.release_date ? v.release_date.split('T')[0] : new Date(v.created_at).toLocaleDateString(),
     thumbnail: v.thumbnail || null,
     durationStr: formatDuration(v.duration), 
-    duration: v.duration 
+    duration: v.duration,
+    channelAvatar: v.channel_avatar
   }));
   
   res.json({ videos: formatted });

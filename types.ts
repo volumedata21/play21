@@ -17,6 +17,7 @@ export interface VideoFile {
 
   // NEW METADATA FIELDS ---
   channel?: string;
+  channelAvatar?: string;
   genre?: string;
   releaseDate?: string;
 
