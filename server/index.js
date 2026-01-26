@@ -38,6 +38,11 @@ db.exec(`
     thumbnail TEXT, 
     subtitles TEXT,
     duration INTEGER,
+    description TEXT,
+    channel TEXT,
+    channel_avatar TEXT,
+    genre TEXT,
+    release_date TEXT,
     created_at INTEGER,
     views INTEGER DEFAULT 0,
     is_favorite INTEGER DEFAULT 0
@@ -76,6 +81,43 @@ db.exec(`
 // ---------------------------------------------------------
 // HELPER FUNCTIONS
 // ---------------------------------------------------------
+// Helper to parse .nfo XML content manually (without extra libraries)
+function parseNfo(nfoPath) {
+  try {
+    const content = fs.readFileSync(nfoPath, 'utf-8');
+    
+    const extract = (tag) => {
+      const match = content.match(new RegExp(`<${tag}[^>]*>(.*?)</${tag}>`, 's'));
+      return match ? match[1].trim() : null;
+    };
+
+    // Simple XML entity decoder (turns &apos; into ' etc)
+    const decode = (str) => {
+      if (!str) return null;
+      return str
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'")
+        // NEW: Handle numeric entities like &#39; (apostrophe)
+        .replace(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec))
+        // NEW: Handle hex entities like &#x27;
+        .replace(/&#x([0-9A-Fa-f]+);/g, (match, hex) => String.fromCharCode(parseInt(hex, 16)));
+    };
+
+    return {
+      title: decode(extract('title')),
+      plot: decode(extract('plot')),
+      channel: decode(extract('showtitle')),
+      genre: decode(extract('genre')),
+      aired: extract('aired') // Keep date as string
+    };
+  } catch (e) {
+    return null; // No NFO or read error
+  }
+}
+
 function findLocalThumbnail(videoPath) {
   const dir = path.dirname(videoPath);
   const name = path.parse(videoPath).name;
@@ -90,6 +132,36 @@ function findLocalThumbnail(videoPath) {
 
   for (const file of candidates) {
     if (fs.existsSync(file)) return file;
+  }
+  return null;
+}
+
+// NEW: Recursive search for Channel Avatar (poster/avatar/channel.jpg)
+function findChannelAvatar(startDir) {
+  let currentDir = startDir;
+
+  // We loop upwards until we go past the media root
+  while (currentDir.startsWith(mediaDir)) {
+    try {
+      const files = fs.readdirSync(currentDir);
+      
+      // Look for regex match: poster, avatar, channel (case insensitive) with valid extensions
+      const match = files.find(f => /^(poster|avatar|channel)\.(jpg|jpeg|png|webp)$/i.test(f));
+      
+      if (match) {
+        // Found it! Convert full path to web URL
+        const fullPath = path.join(currentDir, match);
+        const relativePath = path.relative(mediaDir, fullPath);
+        return '/media/' + relativePath.split(path.sep).map(encodeURIComponent).join('/');
+      }
+    } catch (e) {
+      // Ignore errors (like permission issues)
+    }
+
+    // Move up one level
+    const parent = path.dirname(currentDir);
+    if (parent === currentDir) break; // Reached system root (safety break)
+    currentDir = parent;
   }
   return null;
 }
@@ -215,14 +287,19 @@ async function scanMedia() {
   const files = getFilesRecursively(mediaDir);
   const supportedExtensions = ['.mp4', '.webm', '.ogg', '.mov', '.mkv'];
 
-  // FIXED: Added 'subtitles' to the column list and placeholders
+  // Description, channel, genre, release_date, channel_avatar
   const insertStmt = db.prepare(`
-    INSERT INTO videos (id, name, filename, folder, path, thumbnail, duration, subtitles, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO videos (id, name, filename, folder, path, thumbnail, duration, subtitles, description, channel, channel_avatar, genre, release_date, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
     thumbnail = excluded.thumbnail,
     duration = excluded.duration,
-    subtitles = excluded.subtitles
+    subtitles = excluded.subtitles,
+    description = excluded.description,
+    channel = excluded.channel,
+    channel_avatar = excluded.channel_avatar,
+    genre = excluded.genre,
+    release_date = excluded.release_date
   `);
 
   for (const fullPath of files) {
@@ -255,16 +332,36 @@ async function scanMedia() {
     // 3. Process Subtitles
     const subtitlesJson = await processSubtitles(fullPath, id);
 
-    // 4. Single Insert (FIXED: Correct order of arguments)
+    // 4. CHECK FOR NFO FILE
+    // 4. NFO Metadata
+    const nfoPath = fullPath.replace(/\.[^/.]+$/, ".nfo");
+    let meta = { title: null, plot: null, channel: null, genre: null, aired: null };
+    if (fs.existsSync(nfoPath)) {
+        const parsed = parseNfo(nfoPath);
+        if (parsed) meta = parsed;
+    }
+
+    // 5. NEW: Find Channel Avatar (Recursive)
+    // Pass the folder containing the video to start the search
+    const channelAvatarUrl = findChannelAvatar(path.dirname(fullPath));
+
+    // 6. Insert
+    const displayName = meta.title || path.basename(fullPath, ext);
+
     insertStmt.run(
       id,
-      path.basename(fullPath, ext),
+      displayName,
       path.basename(fullPath),
       folderName,
       webPath,
       thumbUrl,
-      Math.floor(duration),   // 7th arg = duration
-      subtitlesJson,          // 8th arg = subtitles
+      Math.floor(duration),
+      subtitlesJson,
+      meta.plot,          
+      meta.channel,    
+      channelAvatarUrl,
+      meta.genre,         
+      meta.aired,         
       Math.floor(stats.birthtimeMs)
     );
   }
@@ -289,10 +386,19 @@ app.get('/api/videos', (req, res) => {
     isFavorite: Boolean(v.is_favorite),
     viewsCount: v.views,
     views: `${v.views} views`,
-    timeAgo: new Date(v.created_at).toLocaleDateString(),
+    
+    // --- UPDATED DATE FORMATTING ---
+    // 1. Checks if there is a release date.
+    // 2. Uses 'en-US' with 'long' month to get "October 11, 2025".
+    // 3. Uses 'UTC' timezone to ensure the date doesn't shift backwards.
+    timeAgo: v.release_date 
+        ? new Date(v.release_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }) 
+        : new Date(v.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+    
     thumbnail: v.thumbnail || null,
-    durationStr: formatDuration(v.duration), // Send "MM:SS" string
-    duration: v.duration // Send raw seconds
+    durationStr: formatDuration(v.duration), 
+    duration: v.duration,
+    channelAvatar: v.channel_avatar
   }));
   
   res.json({ videos: formatted });
