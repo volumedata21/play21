@@ -36,7 +36,8 @@ db.exec(`
     folder TEXT,
     path TEXT NOT NULL,
     thumbnail TEXT, 
-    subtitles TEXT, 
+    subtitles TEXT,
+    duration INTEGER,
     created_at INTEGER,
     views INTEGER DEFAULT 0,
     is_favorite INTEGER DEFAULT 0
@@ -115,6 +116,24 @@ function generateThumbnail(videoPath, videoId) {
         size: '1280x720'
       });
   });
+}
+
+// Helper to get video duration
+function getVideoDuration(path) {
+  return new Promise((resolve) => {
+    ffmpeg.ffprobe(path, (err, metadata) => {
+      if (err) return resolve(0);
+      resolve(metadata.format.duration || 0);
+    });
+  });
+}
+
+// Helper to format seconds to MM:SS
+function formatDuration(seconds) {
+  if (!seconds) return "0:00";
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s < 10 ? '0' : ''}${s}`;
 }
 
 async function processSubtitles(videoPath, videoId) {
@@ -196,10 +215,13 @@ async function scanMedia() {
   const files = getFilesRecursively(mediaDir);
   const supportedExtensions = ['.mp4', '.webm', '.ogg', '.mov', '.mkv'];
 
+  // FIXED: Added 'subtitles' to the column list and placeholders
   const insertStmt = db.prepare(`
-    INSERT INTO videos (id, name, filename, folder, path, thumbnail, subtitles, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO videos (id, name, filename, folder, path, thumbnail, duration, subtitles, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
+    thumbnail = excluded.thumbnail,
+    duration = excluded.duration,
     subtitles = excluded.subtitles
   `);
 
@@ -213,6 +235,7 @@ async function scanMedia() {
     const stats = fs.statSync(fullPath);
     const id = `vid-${relativePath.replace(/[^a-zA-Z0-9]/g, '_')}`;
 
+    // 1. Handle Thumbnail
     const existing = db.prepare('SELECT thumbnail FROM videos WHERE id = ?').get(id);
     let thumbUrl = existing ? existing.thumbnail : null;
 
@@ -226,16 +249,22 @@ async function scanMedia() {
         }
     }
 
+    // 2. Get Duration
+    const duration = await getVideoDuration(fullPath);
+
+    // 3. Process Subtitles
     const subtitlesJson = await processSubtitles(fullPath, id);
 
+    // 4. Single Insert (FIXED: Correct order of arguments)
     insertStmt.run(
       id,
       path.basename(fullPath, ext),
       path.basename(fullPath),
       folderName,
       webPath,
-      thumbUrl, 
-      subtitlesJson, 
+      thumbUrl,
+      Math.floor(duration),   // 7th arg = duration
+      subtitlesJson,          // 8th arg = subtitles
       Math.floor(stats.birthtimeMs)
     );
   }
@@ -262,7 +291,8 @@ app.get('/api/videos', (req, res) => {
     views: `${v.views} views`,
     timeAgo: new Date(v.created_at).toLocaleDateString(),
     thumbnail: v.thumbnail || null,
-    subtitles: v.subtitles ? JSON.parse(v.subtitles) : [] 
+    durationStr: formatDuration(v.duration), // Send "MM:SS" string
+    duration: v.duration // Send raw seconds
   }));
   
   res.json({ videos: formatted });
