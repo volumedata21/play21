@@ -38,6 +38,10 @@ db.exec(`
     thumbnail TEXT, 
     subtitles TEXT,
     duration INTEGER,
+    description TEXT,
+    channel TEXT,
+    genre TEXT,
+    release_date TEXT,
     created_at INTEGER,
     views INTEGER DEFAULT 0,
     is_favorite INTEGER DEFAULT 0
@@ -76,6 +80,39 @@ db.exec(`
 // ---------------------------------------------------------
 // HELPER FUNCTIONS
 // ---------------------------------------------------------
+// Helper to parse .nfo XML content manually (without extra libraries)
+function parseNfo(nfoPath) {
+  try {
+    const content = fs.readFileSync(nfoPath, 'utf-8');
+    
+    const extract = (tag) => {
+      const match = content.match(new RegExp(`<${tag}[^>]*>(.*?)</${tag}>`, 's'));
+      return match ? match[1].trim() : null;
+    };
+
+    // Simple XML entity decoder (turns &apos; into ' etc)
+    const decode = (str) => {
+      if (!str) return null;
+      return str
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'");
+    };
+
+    return {
+      title: decode(extract('title')),
+      plot: decode(extract('plot')),
+      channel: decode(extract('showtitle')),
+      genre: decode(extract('genre')),
+      aired: extract('aired') // Keep date as string
+    };
+  } catch (e) {
+    return null; // No NFO or read error
+  }
+}
+
 function findLocalThumbnail(videoPath) {
   const dir = path.dirname(videoPath);
   const name = path.parse(videoPath).name;
@@ -215,14 +252,18 @@ async function scanMedia() {
   const files = getFilesRecursively(mediaDir);
   const supportedExtensions = ['.mp4', '.webm', '.ogg', '.mov', '.mkv'];
 
-  // FIXED: Added 'subtitles' to the column list and placeholders
+  // UPDATED: Added description, channel, genre, release_date
   const insertStmt = db.prepare(`
-    INSERT INTO videos (id, name, filename, folder, path, thumbnail, duration, subtitles, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO videos (id, name, filename, folder, path, thumbnail, duration, subtitles, description, channel, genre, release_date, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
     thumbnail = excluded.thumbnail,
     duration = excluded.duration,
-    subtitles = excluded.subtitles
+    subtitles = excluded.subtitles,
+    description = excluded.description,
+    channel = excluded.channel,
+    genre = excluded.genre,
+    release_date = excluded.release_date
   `);
 
   for (const fullPath of files) {
@@ -255,16 +296,31 @@ async function scanMedia() {
     // 3. Process Subtitles
     const subtitlesJson = await processSubtitles(fullPath, id);
 
-    // 4. Single Insert (FIXED: Correct order of arguments)
+    // 4. CHECK FOR NFO FILE
+    const nfoPath = fullPath.replace(/\.[^/.]+$/, ".nfo");
+    let meta = { title: null, plot: null, channel: null, genre: null, aired: null };
+    if (fs.existsSync(nfoPath)) {
+        const parsed = parseNfo(nfoPath);
+        if (parsed) meta = parsed;
+    }
+
+    // 5. Insert with Metadata
+    // Use NFO title if exists, otherwise filename
+    const displayName = meta.title || path.basename(fullPath, ext);
+
     insertStmt.run(
       id,
-      path.basename(fullPath, ext),
+      displayName,
       path.basename(fullPath),
       folderName,
       webPath,
       thumbUrl,
-      Math.floor(duration),   // 7th arg = duration
-      subtitlesJson,          // 8th arg = subtitles
+      Math.floor(duration),
+      subtitlesJson,
+      meta.plot,          // description
+      meta.channel,       // channel
+      meta.genre,         // genre
+      meta.aired,         // release_date
       Math.floor(stats.birthtimeMs)
     );
   }
@@ -289,10 +345,11 @@ app.get('/api/videos', (req, res) => {
     isFavorite: Boolean(v.is_favorite),
     viewsCount: v.views,
     views: `${v.views} views`,
-    timeAgo: new Date(v.created_at).toLocaleDateString(),
+    // Use release_date if available, otherwise fallback to file creation date
+    timeAgo: v.release_date ? v.release_date.split('T')[0] : new Date(v.created_at).toLocaleDateString(),
     thumbnail: v.thumbnail || null,
-    durationStr: formatDuration(v.duration), // Send "MM:SS" string
-    duration: v.duration // Send raw seconds
+    durationStr: formatDuration(v.duration), 
+    duration: v.duration 
   }));
   
   res.json({ videos: formatted });

@@ -15,6 +15,11 @@ export interface VideoFile {
   }[];
   // ------------------------
 
+  // NEW METADATA FIELDS ---
+  channel?: string;
+  genre?: string;
+  releaseDate?: string;
+
   duration?: number;
   durationStr?: string; // Pre-formatted for mocks
   views?: string; // Pre-formatted for mocks
