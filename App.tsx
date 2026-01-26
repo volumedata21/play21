@@ -7,6 +7,7 @@ import { XIcon, PlaylistPlusIcon, SortIcon, ChevronDownIcon } from './components
 import { processFiles } from './services/fileService';
 import { getMockData } from './services/mockData';
 import { VideoFile, FolderStructure, ViewState, Playlist, SortOption } from './types';
+import { VirtuosoGrid } from 'react-virtuoso';
 
 const App = () => {
     const [viewState, setViewState] = useState<ViewState>(ViewState.HOME);
@@ -20,6 +21,7 @@ const App = () => {
     const [isScanning, setIsScanning] = useState(false);
     const [sortOption, setSortOption] = useState<SortOption>(SortOption.DATE_NEWEST);
     const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
+    const [pagination, setPagination] = useState({ page: 1, hasMore: true, isLoading: false });
 
     // Features State
     const [history, setHistory] = useState<string[]>([]);
@@ -33,73 +35,66 @@ const App = () => {
     // DATABASE CONNECTION CODE
     // ----------------------------------------------------------------
 
-    const fetchLocalVideos = async () => {
+    const fetchVideos = async (page = 1, folder: string | null = null, reset = false) => {
+        // Prevent duplicate loads
+        if (!reset && (pagination.isLoading || !pagination.hasMore)) return;
+
+        setPagination(prev => ({ ...prev, isLoading: true }));
+
         try {
-            // 1. Request data from our new Node/SQLite backend
-            const response = await fetch('/api/videos');
+            const url = new URL('/api/videos', window.location.origin);
+            url.searchParams.set('page', page.toString());
+            url.searchParams.set('limit', '50');
+            if (folder) url.searchParams.set('folder', folder);
 
-            if (!response.ok) {
-                throw new Error('Failed to connect to backend');
-            }
-
+            const response = await fetch(url.toString());
             const data = await response.json();
 
-            // 2. The backend returns { videos: [...] }
-            // 2. The backend returns { videos: [...] }
-            const dbVideos = data.videos.map((v: any) => {
-                // SAFETY: Parse subtitles from JSON string to Array
+            // Process subtitles (safe parsing)
+            const newVideos = data.videos.map((v: any) => {
                 let parsedSubtitles = [];
                 try {
-                    if (v.subtitles && typeof v.subtitles === 'string') {
-                        parsedSubtitles = JSON.parse(v.subtitles);
-                    }
-                } catch (e) {
-                    console.warn("Failed to parse subtitles for", v.name);
-                }
-
-                return {
-                    ...v,
-                    url: v.path,
-                    subtitles: parsedSubtitles
-                };
+                    if (v.subtitles && typeof v.subtitles === 'string') parsedSubtitles = JSON.parse(v.subtitles);
+                } catch (e) {}
+                return { ...v, url: v.path, subtitles: parsedSubtitles };
             });
 
-            // 3. Organize videos into folders for the Sidebar
-            const structure: FolderStructure = {};
-            
-            dbVideos.forEach((video: VideoFile) => {
-                const fullFolderPath = video.folder || 'Local Library';
-                
-                // SPLIT LOGIC: Get only the top-level folder name
-                // If path is "Movies/Action/SciFi", this grabs just "Movies"
-                // We split by both forward slash (/) and backslash (\) just to be safe
-                const rootFolder = fullFolderPath.split(/[/\\]/)[0];
-
-                if (!structure[rootFolder]) {
-                    structure[rootFolder] = [];
-                }
-                // Add the video to this top-level bucket, regardless of how deep it actually is
-                structure[rootFolder].push(video);
-            });
-
-            // 4. Update the App state
-            setAllVideos(dbVideos);
-            setFolderStructure(structure);
-
-            // If we found videos, show the home screen
-            if (dbVideos.length > 0) {
-                setViewState(ViewState.HOME);
+            if (reset) {
+                setAllVideos(newVideos);
+                setPagination({ 
+                    page: 2, // Next page will be 2
+                    hasMore: data.pagination.totalPages > 1, 
+                    isLoading: false 
+                });
+            } else {
+                setAllVideos(prev => [...prev, ...newVideos]);
+                setPagination(prev => ({ 
+                    ...prev, 
+                    page: prev.page + 1, 
+                    hasMore: page < data.pagination.totalPages, 
+                    isLoading: false 
+                }));
             }
-
         } catch (error) {
-            console.log("Backend not connected yet (or empty). Waiting...", error);
+            console.log("Backend error", error);
+            setPagination(prev => ({ ...prev, isLoading: false }));
         }
     };
 
     // Trigger the fetch when the app first loads
+    // 1. Initial Load
     useEffect(() => {
-        fetchLocalVideos();
+        fetchVideos(1, null, true);
     }, []);
+
+    // 2. When Folder Changes (Reset and Fetch)
+    useEffect(() => {
+        // Only fetch if we are in HOME view (avoid fetching when watching video)
+        if (viewState === ViewState.HOME) {
+            setAllVideos([]); 
+            fetchVideos(1, selectedFolder, true);
+        }
+    }, [selectedFolder]);
 
     // ... existing useEffect for fetchLocalVideos ...
 
@@ -550,18 +545,38 @@ const App = () => {
                                 </div>
                             )}
 
-                            {/* --- VIDEO GRID --- */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-y-10 gap-x-6 pb-20">
-                                {displayedVideos.map(video => (
-                                    <VideoCard
-                                        key={video.id}
-                                        video={video}
-                                        isSelected={selectedVideoIds.has(video.id)}
-                                        onSelect={() => toggleSelection(video.id)}
-                                        onClick={() => handleVideoSelect(video)}
+                            {/* --- VIRTUALIZED VIDEO GRID --- */}
+                            {displayedVideos.length > 0 && (
+                                <div style={{ height: 'calc(100vh - 200px)', width: '100%' }}>
+                                    <VirtuosoGrid
+                                        style={{ height: '100%' }}
+                                        data={displayedVideos}
+                                        endReached={() => fetchVideos(pagination.page, selectedFolder)}
+                                        overscan={200}
+                                        components={{
+                                            List: React.forwardRef(({ style, children, ...props }: any, ref) => (
+                                                <div
+                                                    ref={ref}
+                                                    {...props}
+                                                    style={style}
+                                                    className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-y-10 gap-x-6 pb-20 pr-4"
+                                                >
+                                                    {children}
+                                                </div>
+                                            ))
+                                        }}
+                                        itemContent={(index, video) => (
+                                            <VideoCard
+                                                key={video.id}
+                                                video={video}
+                                                isSelected={selectedVideoIds.has(video.id)}
+                                                onSelect={() => toggleSelection(video.id)}
+                                                onClick={() => handleVideoSelect(video)}
+                                            />
+                                        )}
                                     />
-                                ))}
-                            </div>
+                                </div>
+                            )}
 
                             {displayedVideos.length === 0 && (
                                 <div className="col-span-full py-20 text-center">

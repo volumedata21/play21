@@ -236,7 +236,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <div className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10">
                         <video
                             ref={videoRef}
-                            src={video.url}
+                            src={`/api/stream/${video.id}`}
                             controls
                             autoPlay
                             crossOrigin="anonymous"
