@@ -14,8 +14,8 @@ const VideoCard: React.FC<VideoCardProps> = ({ video, isSelected = false, onSele
   const [thumbnail, setThumbnail] = useState<string | null>(video.thumbnail || null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [duration, setDuration] = useState<string>(video.durationStr || "0:00");
-  const [views] = useState<string>(video.views || formatViews());
-  const [timeAgo] = useState<string>(video.timeAgo || formatTimeAgo());
+  // Use real DB views if available, otherwise fall back to formatter
+  const displayViews = video.viewsCount !== undefined ? `${video.viewsCount} views` : (video.views || formatViews());
 
   // Attempt to generate thumbnail if not provided
   useEffect(() => {
@@ -117,23 +117,37 @@ const VideoCard: React.FC<VideoCardProps> = ({ video, isSelected = false, onSele
         )}
       </div>
 
-      {/* Info */}
+      {/* Info Section */}
       <div className="flex gap-3 px-1" onClick={handleCardClick}>
-        {/* Avatar */}
+        {/* UPDATED: Channel Avatar */}
         <div className="flex-shrink-0 mt-0.5">
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-secondary to-blue-600 shadow-lg border border-white/10"></div>
+           {video.channelAvatar ? (
+               <img 
+                 src={video.channelAvatar} 
+                 className="w-9 h-9 rounded-full object-cover shadow-lg border border-white/10" 
+                 alt={video.channel || "Channel"}
+               />
+           ) : (
+               <div className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-secondary to-blue-600 shadow-lg border border-white/10 flex items-center justify-center text-xs font-bold text-white">
+                   {/* Fallback to Channel Initial or Video Initial */}
+                   {video.channel ? video.channel.charAt(0).toUpperCase() : (video.name[0] || "L")}
+               </div>
+           )}
         </div>
         {/* Texts */}
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5 min-w-0">
           <h3 className="text-[15px] font-semibold text-white/90 line-clamp-2 leading-snug group-hover:text-brand-primary transition-colors">
-            {video.name}
+            {video.name} 
           </h3>
           <div className="text-xs text-glass-subtext flex flex-col gap-0.5">
-            <span className="font-medium hover:text-white transition-colors">{video.folder}</span>
+            {/* UPDATED: Channel Name or Folder */}
+            <span className="font-medium hover:text-white transition-colors truncate">
+                {video.channel || video.folder}
+            </span>
             <div className="flex items-center gap-1.5 opacity-80">
-              <span>{views}</span>
+              <span>{displayViews}</span>
               <span className="w-0.5 h-0.5 bg-current rounded-full"></span>
-              <span>{timeAgo}</span>
+              <span>{video.timeAgo}</span>
             </div>
           </div>
         </div>

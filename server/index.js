@@ -418,6 +418,18 @@ app.post('/api/videos/:id/favorite', (req, res) => {
     res.json({ success: true });
 });
 
+// Increment View Count
+app.post('/api/videos/:id/view', (req, res) => {
+    const { id } = req.params;
+    try {
+        db.prepare('UPDATE videos SET views = views + 1 WHERE id = ?').run(id);
+        res.json({ success: true });
+    } catch (e) {
+        console.error("Failed to increment view", e);
+        res.status(500).json({ error: "Failed to update views" });
+    }
+});
+
 // --- THUMBNAILS (Custom Save/Remove) ---
 app.post('/api/videos/:id/thumbnail', (req, res) => {
     const { id } = req.params;

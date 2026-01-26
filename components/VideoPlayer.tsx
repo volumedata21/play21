@@ -99,6 +99,12 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
     }, [video.id, video.url]);
 
+    // Increment view count on mount
+    useEffect(() => {
+        // We fire-and-forget this request. We don't need to wait for the result.
+        fetch(`/api/videos/${video.id}/view`, { method: 'POST' });
+    }, [video.id]);
+
     const captureThumbnail = async () => {
         if (!videoRef.current || isProcessingThumb) return;
 
