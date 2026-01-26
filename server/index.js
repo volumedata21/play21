@@ -26,6 +26,7 @@ if (!fs.existsSync(subsDir)) fs.mkdirSync(subsDir, { recursive: true });
 // 2. DATABASE SETUP
 // ---------------------------------------------------------
 const db = new Database(path.join(dataDir, 'play21.db'));
+db.pragma('journal_mode = WAL');
 
 // Videos Table
 db.exec(`
@@ -477,20 +478,30 @@ app.get('/api/videos', (req, res) => {
   }
 });
 
-// --- NEW STREAMING ROUTE ---
+// --- STREAMING ROUTE ---
 app.get('/api/stream/:id', (req, res) => {
     const video = db.prepare('SELECT path FROM videos WHERE id = ?').get(req.params.id);
     if (!video) return res.status(404).send('Not found');
 
-    // Convert web path back to file system path if necessary
-    // If your DB stores '/media/movie.mp4', we need to find real path
+    // Convert web path back to file system path
     let fullPath = video.path;
     if (video.path.startsWith('/media')) {
          const relPath = decodeURIComponent(video.path.replace(/^\/media\//, ''));
          fullPath = path.join(mediaDir, relPath);
     }
 
-    // This handles the "Range" header automatically (seeking, buffering)
+    // --- FIX: Check if file exists inside the route ---
+    if (!fs.existsSync(fullPath)) {
+        console.log(`File missing: ${fullPath}. Removing from DB.`);
+        try {
+            db.prepare('DELETE FROM videos WHERE id = ?').run(req.params.id);
+        } catch (e) {
+            console.error("Failed to remove ghost file from DB", e);
+        }
+        return res.status(404).send('File not found on disk');
+    }
+
+    // This handles the "Range" header automatically
     res.sendFile(fullPath); 
 });
 
@@ -637,70 +648,6 @@ app.post('/api/playlists/:id/videos', (req, res) => {
 
 // Run scan on startup
 scanMedia();
-
-// --- THUMBNAILS (Custom Save/Remove) ---
-app.post('/api/videos/:id/thumbnail', (req, res) => {
-    const { id } = req.params;
-    const { image } = req.body;
-
-    if (!image) return res.status(400).json({ error: "No image data" });
-
-    try {
-        // Strip the data:image/jpeg;base64, part to get raw data
-        const base64Data = image.replace(/^data:image\/\w+;base64,/, "");
-        const buffer = Buffer.from(base64Data, 'base64');
-        
-        // Save as vid-xyz-custom.jpg in the persistent /data folder
-        const filename = `${id}-custom.jpg`;
-        const filepath = path.join(thumbnailsDir, filename);
-        fs.writeFileSync(filepath, buffer);
-
-        // Save the WEB path (relative) to the database
-        const webPath = `/thumbnails/${filename}`;
-        db.prepare('UPDATE videos SET thumbnail = ? WHERE id = ?').run(webPath, id);
-
-        res.json({ success: true, thumbnail: webPath });
-    } catch (e) {
-        console.error("Failed to save thumbnail", e);
-        res.status(500).json({ error: "Failed to save" });
-    }
-});
-
-app.delete('/api/videos/:id/thumbnail', async (req, res) => {
-    const { id } = req.params;
-    try {
-        // 1. Delete custom file if it exists
-        const customPath = path.join(thumbnailsDir, `${id}-custom.jpg`);
-        if (fs.existsSync(customPath)) fs.unlinkSync(customPath);
-
-        // 2. Find the original video file to fallback to the auto-generated one
-        const video = db.prepare('SELECT path FROM videos WHERE id = ?').get(id);
-        if (!video) return res.status(404).json({ error: "Video not found" });
-
-        const relPath = decodeURIComponent(video.path.replace(/^\/media\//, ''));
-        const fullPath = path.join(mediaDir, relPath);
-
-        let newThumbUrl = null;
-        
-        // Check for local file (cover.jpg etc)
-        const localThumbPath = findLocalThumbnail(fullPath);
-        if (localThumbPath) {
-             const relativeThumb = path.relative(mediaDir, localThumbPath);
-             newThumbUrl = '/media/' + relativeThumb.split(path.sep).map(encodeURIComponent).join('/');
-        } else {
-             // Fallback to generated ID.jpg
-             newThumbUrl = await generateThumbnail(fullPath, id);
-        }
-
-        // 3. Update DB
-        db.prepare('UPDATE videos SET thumbnail = ? WHERE id = ?').run(newThumbUrl, id);
-        res.json({ success: true, thumbnail: newThumbUrl });
-
-    } catch (e) {
-        console.error("Failed to remove thumbnail", e);
-        res.status(500).json({ error: "Failed to remove" });
-    }
-});
 
 app.listen(PORT, () => {
   console.log(`API Server running on http://localhost:${PORT}`);
