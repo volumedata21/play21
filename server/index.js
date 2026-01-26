@@ -646,6 +646,49 @@ app.post('/api/playlists/:id/videos', (req, res) => {
     }
 });
 
+// --- NEW: FOLDERS ENDPOINT ---
+// --- FOLDERS ENDPOINT (Recursive) ---
+app.get('/api/folders', (req, res) => {
+    const parent = req.query.parent; 
+
+    try {
+        // If parent is provided, look for direct children: "Movies/Action" -> "Action"
+        // If no parent, look for roots: "Movies"
+        let query = 'SELECT DISTINCT folder FROM videos';
+        let params = [];
+        
+        if (parent) {
+            query += ' WHERE folder LIKE ?';
+            params = [`${parent}/%`];
+        }
+
+        const allFolders = db.prepare(query).all(...params);
+        
+        const results = new Set();
+        allFolders.forEach(row => {
+            if (!row.folder) return;
+            
+            // LOGIC:
+            // If we are in "Movies", and we find "Movies/Action/90s", 
+            // we only want to show "Action", not "Action/90s".
+            let relevantPart = row.folder;
+            if (parent) {
+                // Strip the parent prefix ("Movies/")
+                relevantPart = relevantPart.substring(parent.length + 1);
+            }
+            
+            // Take the first segment
+            const root = relevantPart.split(/[/\\]/)[0];
+            if (root) results.add(root);
+        });
+
+        res.json({ folders: Array.from(results).sort() });
+    } catch (e) {
+        console.error("Folder fetch failed", e);
+        res.status(500).json({ error: "Failed to fetch folders" });
+    }
+});
+
 // Run scan on startup
 scanMedia();
 

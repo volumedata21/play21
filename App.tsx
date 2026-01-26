@@ -22,6 +22,8 @@ const App = () => {
     const [sortOption, setSortOption] = useState<SortOption>(SortOption.DATE_NEWEST);
     const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
     const [pagination, setPagination] = useState({ page: 1, hasMore: true, isLoading: false });
+    const [currentSubFolders, setCurrentSubFolders] = useState<string[]>([]);
+    const [isFoldersExpanded, setIsFoldersExpanded] = useState(false);
 
     // Features State
     const [history, setHistory] = useState<string[]>([]);
@@ -55,24 +57,24 @@ const App = () => {
                 let parsedSubtitles = [];
                 try {
                     if (v.subtitles && typeof v.subtitles === 'string') parsedSubtitles = JSON.parse(v.subtitles);
-                } catch (e) {}
+                } catch (e) { }
                 return { ...v, url: v.path, subtitles: parsedSubtitles };
             });
 
             if (reset) {
                 setAllVideos(newVideos);
-                setPagination({ 
+                setPagination({
                     page: 2, // Next page will be 2
-                    hasMore: data.pagination.totalPages > 1, 
-                    isLoading: false 
+                    hasMore: data.pagination.totalPages > 1,
+                    isLoading: false
                 });
             } else {
                 setAllVideos(prev => [...prev, ...newVideos]);
-                setPagination(prev => ({ 
-                    ...prev, 
-                    page: prev.page + 1, 
-                    hasMore: page < data.pagination.totalPages, 
-                    isLoading: false 
+                setPagination(prev => ({
+                    ...prev,
+                    page: prev.page + 1,
+                    hasMore: page < data.pagination.totalPages,
+                    isLoading: false
                 }));
             }
         } catch (error) {
@@ -83,20 +85,53 @@ const App = () => {
 
     // Trigger the fetch when the app first loads
     // 1. Initial Load
+    // 1. Initial Load
     useEffect(() => {
         fetchVideos(1, null, true);
+        fetchFolderList(); // <--- Call the new function
     }, []);
+
+    // Fetch folders. If 'parent' is null, it fetches Roots (for Sidebar).
+    // If 'parent' is set, it fetches Sub-folders (for the Main View).
+    const fetchFolderList = async (parent: string | null = null) => {
+        try {
+            const url = new URL('/api/folders', window.location.origin);
+            if (parent) url.searchParams.set('parent', parent);
+
+            const res = await fetch(url.toString());
+            const data = await res.json();
+
+            if (parent) {
+                // We are looking for sub-folders of the current view
+                setCurrentSubFolders(data.folders);
+                setIsFoldersExpanded(false); // Always collapse by default
+            } else {
+                // We are loading the Sidebar roots
+                const structure: any = {};
+                data.folders.forEach((f: string) => { structure[f] = []; });
+                setFolderStructure(structure);
+            }
+        } catch (e) {
+            console.error("Failed to load folders", e);
+        }
+    };
 
     // 2. When Folder Changes (Reset and Fetch)
     useEffect(() => {
-        // Only fetch if we are in HOME view (avoid fetching when watching video)
         if (viewState === ViewState.HOME) {
-            setAllVideos([]); 
+            setAllVideos([]);
             fetchVideos(1, selectedFolder, true);
+
+            // NEW: Fetch sub-folders for this view
+            // If selectedFolder is null (Root), we don't need subfolders here 
+            // (or you could fetch roots if you want them in the grid too)
+            if (selectedFolder) {
+                fetchFolderList(selectedFolder);
+            } else {
+                setCurrentSubFolders([]);
+            }
         }
     }, [selectedFolder]);
-
-    // ... existing useEffect for fetchLocalVideos ...
 
     // --- NEW: HANDLE BROWSER BACK BUTTON ---
     useEffect(() => {
@@ -109,7 +144,7 @@ const App = () => {
                 setViewState(event.state.view || ViewState.HOME);
                 setSelectedFolder(event.state.folder || null);
                 setSelectedPlaylistId(event.state.playlistId || null);
-                
+
                 // Restore Video (if any)
                 if (event.state.videoId) {
                     const vid = allVideos.find(v => v.id === event.state.videoId);
@@ -140,8 +175,9 @@ const App = () => {
             // 1. Tell server to scan
             await fetch('/api/scan', { method: 'POST' });
 
-            // 2. Fetch the updated list
-            await fetchLocalVideos();
+            // 2. Fetch the updated list (Use the new function!)
+            // Reset to page 1, current folder, true = reset list
+            await fetchVideos(1, selectedFolder, true); 
         } catch (e) {
             console.error("Scan failed", e);
         } finally {
@@ -181,12 +217,11 @@ const App = () => {
     };
 
     // --- UPDATED NAVIGATION LOGIC ---
-    const { displayedVideos, subFolders, canGoUp } = useMemo(() => {
+    const { displayedVideos, canGoUp } = useMemo(() => {
         let videos = allVideos;
-        let foundFolders: string[] = [];
         let showGoUp = false;
 
-        // 1. Filter by View State (Favorites, History, etc)
+        // 1. Filter by View State
         if (viewState === ViewState.FAVORITES) {
             videos = videos.filter(v => v.isFavorite);
         } else if (viewState === ViewState.HISTORY) {
@@ -195,40 +230,21 @@ const App = () => {
         } else if (viewState === ViewState.PLAYLIST && selectedPlaylistId) {
             const playlist = playlists.find(p => p.id === selectedPlaylistId);
             videos = playlist ? playlist.videoIds.map(id => allVideos.find(v => v.id === id)).filter(Boolean) as VideoFile[] : [];
-        } 
-        
-        // 2. FOLDER NAVIGATION LOGIC (Only active on Home view)
-        else if (selectedFolder) {
-            // Logic: Show ALL videos in this folder AND its subfolders (Recursive)
-            // But also calculate which subfolders exist so we can show navigation buttons
-            
-            showGoUp = selectedFolder.includes('/'); 
-            
-            const folderSet = new Set<string>();
-
-            // Filter videos to only those in this tree
-            videos = videos.filter(v => {
-                const isExactMatch = v.folder === selectedFolder;
-                const isSubFolder = v.folder.startsWith(selectedFolder + '/'); // Ensure "Use" doesn't match "User"
-
-                if (isExactMatch || isSubFolder) {
-                    // It belongs in this view! 
-                    
-                    // If it is a subfolder, let's grab the folder name for the UI buttons
-                    if (isSubFolder) {
-                        const remainder = v.folder.substring(selectedFolder.length + 1);
-                        const nextSegment = remainder.split('/')[0];
-                        if (nextSegment) folderSet.add(nextSegment);
-                    }
-                    return true;
-                }
-                return false;
-            });
-
-            foundFolders = Array.from(folderSet).sort();
         }
 
-        // 3. Search Filter (Global or Contextual)
+        // 2. FOLDER NAVIGATION (Simplified)
+        else if (selectedFolder) {
+            showGoUp = selectedFolder.includes('/');
+            
+            // Just filter videos, don't calculate subfolders here anymore
+            videos = videos.filter(v => {
+                const isExactMatch = v.folder === selectedFolder;
+                const isSubFolder = v.folder.startsWith(selectedFolder + '/'); 
+                return isExactMatch || isSubFolder;
+            });
+        }
+
+        // 3. Search
         if (searchTerm) {
             const lower = searchTerm.toLowerCase();
             videos = videos.filter(v => v.name.toLowerCase().includes(lower));
@@ -249,17 +265,16 @@ const App = () => {
             }
         });
 
-        return { displayedVideos: sortedVideos, subFolders: foundFolders, canGoUp: showGoUp };
+        return { displayedVideos: sortedVideos, canGoUp: showGoUp };
     }, [allVideos, selectedFolder, searchTerm, viewState, history, playlists, selectedPlaylistId, sortOption]);
-
     // --- NEW NAVIGATION HANDLERS ---
-    
+
     const handleEnterFolder = (subFolderName: string) => {
         const newPath = `${selectedFolder}/${subFolderName}`;
-        
+
         // PUSH HISTORY
         window.history.pushState({ view: ViewState.HOME, folder: newPath }, '');
-        
+
         setSelectedFolder(newPath);
     };
 
@@ -427,12 +442,12 @@ const App = () => {
                     viewState={viewState}
                     selectedFolder={selectedFolder}
                     selectedPlaylistId={selectedPlaylistId}
-                    
+
                     // UPDATED HANDLERS
                     onSelectFolder={handleSidebarFolderSelect}
                     onSelectView={handleSidebarViewChange}
                     onSelectPlaylist={handleSidebarPlaylistSelect}
-                    
+
                     onCreatePlaylist={handleCreatePlaylist}
                     onClose={() => setIsSidebarOpen(false)}
                 />
@@ -504,7 +519,7 @@ const App = () => {
 
                             {/* --- NAVIGATION HEADER (Go Up Button) --- */}
                             {canGoUp && (
-                                <button 
+                                <button
                                     onClick={handleGoUp}
                                     className="mb-6 flex items-center gap-2 text-sm font-bold text-brand-primary hover:text-white transition-colors bg-white/5 hover:bg-white/10 px-4 py-2 rounded-lg self-start"
                                 >
@@ -513,30 +528,53 @@ const App = () => {
                                 </button>
                             )}
 
-                            {/* --- FOLDER GRID --- */}
-                            {/* --- FOLDER GRID (Compact) --- */}
-                            {subFolders.length > 0 && (
-                                <div className="mb-8">
-                                    <div className="flex items-center gap-2 mb-3">
-                                        <h3 className="text-[10px] font-bold text-glass-subtext uppercase tracking-widest">Subfolders</h3>
-                                        <div className="h-px bg-white/5 flex-1"></div>
+                            
+
+                            
+
+                            {/* --- SLEEK SQUARE FOLDERS --- */}
+                            {currentSubFolders.length > 0 && (
+                                <div className="mb-8 animate-fade-in">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center gap-9">
+                                            <div className="bg-brand-primary/10 p-1.5 rounded-lg text-brand-primary">
+                                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+                                            </div>
+                                            <h3 className="text-xs font-bold text-white uppercase">
+                                                Folders <span className="text-glass-subtext ml-1">({currentSubFolders.length})</span>
+                                            </h3>
+                                        </div>
+                                        
+                                        {/* Toggle Button */}
+                                        {currentSubFolders.length > 6 && (
+                                            <button 
+                                                onClick={() => setIsFoldersExpanded(!isFoldersExpanded)}
+                                                className="text-xs text-brand-primary hover:text-white transition-colors font-medium flex items-center gap-1 px-3 py-1.5 rounded-lg hover:bg-white/5"
+                                            >
+                                                {isFoldersExpanded ? 'Show Less' : 'Show All'}
+                                                <ChevronDownIcon className={`w-3 h-3 transition-transform ${isFoldersExpanded ? 'rotate-180' : ''}`} />
+                                            </button>
+                                        )}
                                     </div>
-                                    
-                                    {/* Updated Grid: More columns, smaller gap */}
-                                    <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-3">
-                                        {subFolders.map(folder => (
+
+                                    {/* The Sleek Grid */}
+                                    <div className={`grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-4 transition-all duration-500 ${isFoldersExpanded ? '' : 'max-h-[100px] overflow-hidden'}`}>
+                                        {currentSubFolders.map(folder => (
                                             <div 
                                                 key={folder}
                                                 onClick={() => handleEnterFolder(folder)}
-                                                className="group relative aspect-[4/3] bg-white/5 hover:bg-white/10 border border-white/5 hover:border-brand-primary/50 rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all overflow-hidden"
+                                                className="group relative aspect-square bg-gradient-to-br from-white/10 to-transparent border border-white/5 hover:border-brand-primary/50 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_25px_rgba(59,130,246,0.15)] overflow-hidden"
                                             >
-                                                {/* Smaller Folder Icon */}
-                                                <div className="mb-1.5 text-brand-primary opacity-60 group-hover:opacity-100 group-hover:scale-110 transition-all">
-                                                    <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
-                                                </div>
+                                                {/* Hover Glow Effect */}
+                                                <div className="absolute inset-0 bg-brand-primary/0 group-hover:bg-brand-primary/5 transition-colors duration-300" />
                                                 
-                                                {/* Smaller Text */}
-                                                <span className="text-xs font-medium text-white/70 group-hover:text-white truncate max-w-[90%] px-1 text-center">
+                                                {/* Icon */}
+                                                <div className="mb-3 p-3 rounded-full bg-black/20 group-hover:bg-brand-primary/20 text-brand-primary/70 group-hover:text-brand-primary transition-all duration-300 shadow-inner">
+                                                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+                                                </div>
+
+                                                {/* Text */}
+                                                <span className="relative z-10 text-xs font-semibold text-glass-subtext group-hover:text-white text-center px-3 w-full truncate transition-colors">
                                                     {folder}
                                                 </span>
                                             </div>
