@@ -2,5 +2,9 @@ node_modules
 dist
 .git
 .env
+.github
 /media
 /data
+compose.dev.yaml
+oauth2-proxy.cfg
+

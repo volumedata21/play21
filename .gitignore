@@ -1,3 +1,5 @@
 media/
 data/
 node_modules/
+compose.dev.yaml
+oauth2-proxy.cfg

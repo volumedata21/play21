@@ -2,11 +2,13 @@ import path from 'path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+
 export default defineConfig(() => {
     return {
       server: {
         port: 3000,
-        host: '0.0.0.0',
+        host: '0.0.0.0', // Essential for Docker
+        allowedHosts: true, // NEW: Allows any domain to access the dev server (Vite 6+)
         proxy: {
           '/api': {
             target: 'http://localhost:3001',

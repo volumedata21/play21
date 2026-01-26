@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import ffmpeg from 'fluent-ffmpeg';
+import cors from 'cors';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -421,6 +422,11 @@ async function scanMedia() {
 // ---------------------------------------------------------
 app.use(express.json({ limit: '50mb' }));
 
+app.use(cors({
+  origin: '*', 
+  methods: ['GET', 'POST', 'DELETE', 'UPDATE', 'PUT', 'PATCH'],
+}));
+
 app.use('/media', express.static(mediaDir));
 app.use('/thumbnails', express.static(thumbnailsDir));
 app.use('/subtitles', express.static(subsDir));
@@ -692,6 +698,14 @@ app.get('/api/folders', (req, res) => {
 // Run scan on startup
 scanMedia();
 
-app.listen(PORT, () => {
-  console.log(`API Server running on http://localhost:${PORT}`);
+const distPath = path.join(process.cwd(), 'dist');
+if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+        res.sendFile(path.join(distPath, 'index.html'));
+    });
+}
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`API Server running on http://0.0.0.0:${PORT}`);
 });
