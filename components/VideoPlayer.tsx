@@ -114,19 +114,26 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 vid.currentTime = video.playbackPosition;
             }
         }
-    }, [video.id]); 
+    }, [video.id]);
 
     const captureThumbnail = async () => {
         if (!videoRef.current || isProcessingThumb) return;
 
         setIsProcessingThumb(true);
+        const vid = videoRef.current;
+
+        // BOX-THINKING: Get native video dimensions instead of hardcoding 1280x720
+        const nativeWidth = vid.videoWidth;
+        const nativeHeight = vid.videoHeight;
+
         const canvas = document.createElement('canvas');
-        canvas.width = 1280;
-        canvas.height = 720;
+        canvas.width = nativeWidth;
+        canvas.height = nativeHeight;
         const ctx = canvas.getContext('2d');
 
         if (ctx) {
-            ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+            // Draw the frame at its true native resolution
+            ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
             const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
 
             try {
@@ -233,27 +240,40 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 {/* Player Container */}
                 <div className="relative group">
                     <div className="absolute -inset-1 bg-gradient-to-r from-brand-primary via-brand-secondary to-brand-accent rounded-2xl blur-2xl opacity-20 group-hover:opacity-30 transition-opacity duration-1000"></div>
-                    <div className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10">
+                    <div className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10 flex items-center justify-center">
+
+                        {/* 1. DYNAMIC BLURRED BACKGROUND */}
+                        {/* We use the thumbnail but set it to fill the entire container background */}
+                        {video.thumbnail && (
+                            <div
+                                className="absolute inset-0 w-full h-full bg-cover bg-center blur-3xl opacity-50 scale-110 pointer-events-none"
+                                style={{ backgroundImage: `url(${video.thumbnail})` }}
+                            />
+                        )}
+
+                        {/* 2. THE VIDEO LAYER */}
                         <video
                             ref={videoRef}
                             src={`/api/stream/${video.id}`}
                             controls
                             autoPlay
                             crossOrigin="anonymous"
-                            className="w-full h-full"
+                            /* FIX: 'object-contain' is the magic word here. 
+                               It keeps the video at its native ratio (no squishing) 
+                               BUT keeps the video element itself at 16:9 so the 
+                               controls stretch across the whole bottom bar.
+                            */
+                            className="relative z-10 w-full h-full object-contain"
                             onPause={saveProgress}
-                            // Reset to 0 when finished
                             onEnded={() => {
                                 fetch(`/api/videos/${video.id}/progress`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ time: 0 })
                                 });
-                                // FIX: Update local state to 0
                                 onUpdateVideo({ ...video, playbackPosition: 0 });
                             }}
                         >
-                            {/* RENDER THE SUBTITLE TRACKS */}
                             {video.subtitles && video.subtitles.map((sub, index) => (
                                 <track
                                     key={index}
@@ -267,7 +287,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         </video>
 
                         {subtitlesEnabled && !hasSubtitles && (
-                            <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-black/60 text-white px-4 py-1 rounded text-lg pointer-events-none">
+                            <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-black/60 text-white px-4 py-1 rounded text-lg pointer-events-none z-20">
                                 [No Subtitle File Found]
                             </div>
                         )}

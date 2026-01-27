@@ -194,7 +194,7 @@ function generateThumbnail(videoPath, videoId) {
         timestamps: ['10%'],
         filename: outputFilename,
         folder: thumbnailsDir,
-        size: '1280x720'
+        size: '?x720' 
       });
   });
 }
