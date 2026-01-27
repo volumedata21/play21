@@ -186,8 +186,25 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
     };
 
-    const toggleFavorite = () => {
-        onUpdateVideo({ ...video, isFavorite: !video.isFavorite });
+    const toggleFavorite = async (video: VideoFile) => {
+        const newFavoriteStatus = !video.isFavorite;
+
+        try {
+            // 1. Tell the Server to update the SQLite database
+            await fetch(`/api/videos/${video.id}/favorite`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ isFavorite: newFavoriteStatus })
+            });
+
+            // 2. Update the state in App.tsx
+            // This ensures both the list AND the currently playing video 
+            // object get the new 'isFavorite' value.
+            onUpdateVideo({ ...video, isFavorite: newFavoriteStatus });
+            
+        } catch (e) {
+            console.error("Failed to update favorite", e);
+        }
     };
 
     const saveProgress = () => {
@@ -393,7 +410,10 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         </div>
 
                         <div className="flex items-center gap-3 relative">
-                            <button onClick={toggleFavorite} className={`flex items-center gap-2 glass-button px-5 py-2.5 rounded-full text-sm font-medium transition-colors ${video.isFavorite ? 'text-brand-accent border-brand-accent/30 bg-brand-accent/10' : ''}`}>
+                            <button
+                                onClick={() => toggleFavorite(video)}
+                                className={`flex items-center gap-2 glass-button px-5 py-2.5 rounded-full text-sm font-medium transition-colors ${video.isFavorite ? 'text-brand-accent border-brand-accent/30 bg-brand-accent/10' : ''}`}
+                            >
                                 <StarIcon filled={video.isFavorite} />
                                 <span>Favorite</span>
                             </button>
