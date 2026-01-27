@@ -19,8 +19,7 @@ const App = () => {
     const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [isScanning, setIsScanning] = useState(false);
-    const [sortOption, setSortOption] = useState<SortOption>(SortOption.DATE_NEWEST);
-    const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
+    const [sortOption, setSortOption] = useState<SortOption>(SortOption.AIR_DATE_NEWEST);    const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
     const [pagination, setPagination] = useState({ page: 1, hasMore: true, isLoading: false });
     const [currentSubFolders, setCurrentSubFolders] = useState<string[]>([]);
     const [isFoldersExpanded, setIsFoldersExpanded] = useState(false);
@@ -47,6 +46,7 @@ const App = () => {
             const url = new URL('/api/videos', window.location.origin);
             url.searchParams.set('page', page.toString());
             url.searchParams.set('limit', '50');
+            url.searchParams.set('sort', sortOption); // Send the sort choice to the server
             if (folder) url.searchParams.set('folder', folder);
 
             const response = await fetch(url.toString());
@@ -90,6 +90,11 @@ const App = () => {
         fetchVideos(1, null, true);
         fetchFolderList(); // <--- Call the new function
     }, []);
+
+    useEffect(() => {
+        // When the user changes the sort, clear the list and start from page 1
+        fetchVideos(1, selectedFolder, true);
+    }, [sortOption]);
 
     // Fetch folders. If 'parent' is null, it fetches Roots (for Sidebar).
     // If 'parent' is set, it fetches Sub-folders (for the Main View).
@@ -177,7 +182,7 @@ const App = () => {
 
             // 2. Fetch the updated list (Use the new function!)
             // Reset to page 1, current folder, true = reset list
-            await fetchVideos(1, selectedFolder, true); 
+            await fetchVideos(1, selectedFolder, true);
         } catch (e) {
             console.error("Scan failed", e);
         } finally {
@@ -235,11 +240,11 @@ const App = () => {
         // 2. FOLDER NAVIGATION (Simplified)
         else if (selectedFolder) {
             showGoUp = selectedFolder.includes('/');
-            
+
             // Just filter videos, don't calculate subfolders here anymore
             videos = videos.filter(v => {
                 const isExactMatch = v.folder === selectedFolder;
-                const isSubFolder = v.folder.startsWith(selectedFolder + '/'); 
+                const isSubFolder = v.folder.startsWith(selectedFolder + '/');
                 return isExactMatch || isSubFolder;
             });
         }
@@ -261,6 +266,10 @@ const App = () => {
                 case SortOption.VIEWS_LEAST: return (a.viewsCount || 0) - (b.viewsCount || 0);
                 case SortOption.DURATION_LONGEST: return (b.duration || 0) - (a.duration || 0);
                 case SortOption.DURATION_SHORTEST: return (a.duration || 0) - (b.duration || 0);
+                case SortOption.AIR_DATE_NEWEST:
+                    return (b.releaseDate || '').localeCompare(a.releaseDate || '');
+                case SortOption.AIR_DATE_OLDEST:
+                    return (a.releaseDate || '').localeCompare(b.releaseDate || '');
                 default: return 0;
             }
         });
@@ -528,9 +537,9 @@ const App = () => {
                                 </button>
                             )}
 
-                            
 
-                            
+
+
 
                             {/* --- SLEEK SQUARE FOLDERS --- */}
                             {currentSubFolders.length > 0 && (
@@ -538,16 +547,16 @@ const App = () => {
                                     <div className="flex items-center justify-between mb-4">
                                         <div className="flex items-center gap-9">
                                             <div className="bg-brand-primary/10 p-1.5 rounded-lg text-brand-primary">
-                                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+                                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" /></svg>
                                             </div>
                                             <h3 className="text-xs font-bold text-white uppercase">
                                                 Folders <span className="text-glass-subtext ml-1">({currentSubFolders.length})</span>
                                             </h3>
                                         </div>
-                                        
+
                                         {/* Toggle Button */}
                                         {currentSubFolders.length > 6 && (
-                                            <button 
+                                            <button
                                                 onClick={() => setIsFoldersExpanded(!isFoldersExpanded)}
                                                 className="text-xs text-brand-primary hover:text-white transition-colors font-medium flex items-center gap-1 px-3 py-1.5 rounded-lg hover:bg-white/5"
                                             >
@@ -560,17 +569,17 @@ const App = () => {
                                     {/* The Sleek Grid */}
                                     <div className={`grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-4 transition-all duration-500 ${isFoldersExpanded ? '' : 'max-h-[100px] overflow-hidden'}`}>
                                         {currentSubFolders.map(folder => (
-                                            <div 
+                                            <div
                                                 key={folder}
                                                 onClick={() => handleEnterFolder(folder)}
                                                 className="group relative aspect-square bg-gradient-to-br from-white/10 to-transparent border border-white/5 hover:border-brand-primary/50 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_25px_rgba(59,130,246,0.15)] overflow-hidden"
                                             >
                                                 {/* Hover Glow Effect */}
                                                 <div className="absolute inset-0 bg-brand-primary/0 group-hover:bg-brand-primary/5 transition-colors duration-300" />
-                                                
+
                                                 {/* Icon */}
                                                 <div className="mb-3 p-3 rounded-full bg-black/20 group-hover:bg-brand-primary/20 text-brand-primary/70 group-hover:text-brand-primary transition-all duration-300 shadow-inner">
-                                                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+                                                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" /></svg>
                                                 </div>
 
                                                 {/* Text */}

@@ -315,8 +315,8 @@ async function scanMedia() {
 
     // 1. FAST PASS: Insert files immediately so they appear in the UI
     const insertStmt = db.prepare(`
-      INSERT INTO videos (id, name, filename, folder, path, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO videos (id, name, filename, folder, path, created_at, release_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET path = excluded.path
     `);
 
@@ -340,6 +340,7 @@ async function scanMedia() {
         const folderName = path.dirname(relativePath) === '.' ? 'Local Library' : path.dirname(relativePath);
         const webPath = '/media/' + relativePath.split(path.sep).map(encodeURIComponent).join('/');
         const stats = fs.statSync(fullPath);
+        const tempDate = new Date(stats.birthtimeMs).toISOString().split('T')[0];
 
         // Insert with bare minimum data
         insertStmt.run(
@@ -348,7 +349,8 @@ async function scanMedia() {
           path.basename(fullPath), // Filename
           folderName,
           webPath,
-          Math.floor(stats.birthtimeMs)
+          Math.floor(stats.birthtimeMs),
+          tempDate
         );
       }
     }
@@ -398,10 +400,19 @@ async function scanMedia() {
         );
 
         const nfoPath = actualNfoFile ? path.join(dir, actualNfoFile) : null;
-        let meta = { plot: null, channel: null, genre: null, aired: null };
+        const stats = fs.statSync(fullPath);
+        const fileDate = new Date(stats.birthtimeMs).toISOString().split('T')[0];
+        let meta = { plot: null, channel: null, genre: null, aired: fileDate }; // Default to file date 
+
         if (fs.existsSync(nfoPath)) {
           const parsed = parseNfo(nfoPath);
-          if (parsed) meta = parsed;
+          if (parsed) {
+            meta = {
+              ...parsed,
+              // Use NFO date if it exists, otherwise use the file date 
+              aired: parsed.aired ? parsed.aired.split(' ')[0] : fileDate
+            };
+          }
         }
 
         // E. CHANNEL AVATAR
@@ -447,27 +458,34 @@ app.use('/media', express.static(mediaDir));
 app.use('/thumbnails', express.static(thumbnailsDir));
 app.use('/subtitles', express.static(subsDir));
 
-// --- VIDEOS ---
 // --- VIDEOS (Paginated) ---
 app.get('/api/videos', (req, res) => {
-  // Pagination Params
-  const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 50;
-  const folder = req.query.folder;
-  const offset = (page - 1) * limit;
+  const { page, limit, folder, sort } = req.query; // Get 'sort' from the request
+  const offset = (parseInt(page) - 1) * parseInt(limit);
 
-  let query = 'SELECT * FROM videos';
+  let orderBy = 'release_date DESC'; // Default
+
+  // Map the frontend SortOption to SQL commands
+  if (sort === 'Name (A-Z)') orderBy = 'name ASC';
+  if (sort === 'Name (Z-A)') orderBy = 'name DESC';
+  if (sort === 'Date Added (Newest)') orderBy = 'created_at DESC';
+  if (sort === 'Date Added (Oldest)') orderBy = 'created_at ASC';
+  if (sort === 'Air Date (Newest)') orderBy = 'release_date DESC';
+  if (sort === 'Air Date (Oldest)') orderBy = 'release_date ASC';
+
   let countQuery = 'SELECT COUNT(*) as total FROM videos';
+  let whereClause = '';
   let params = [];
 
-  // Filter Logic
+  // 1. Build the Filter (Where)
   if (folder) {
-    query += ' WHERE folder = ? OR folder LIKE ?';
-    countQuery += ' WHERE folder = ? OR folder LIKE ?';
+    whereClause = ' WHERE folder = ? OR folder LIKE ?';
+    countQuery += whereClause;
     params = [folder, `${folder}/%`];
   }
 
-  query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  // 2. Build the Final Query (Using the 'orderBy' we set above)
+  const query = `SELECT * FROM videos ${whereClause} ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
 
   try {
     const totalObj = db.prepare(countQuery).get(...params);

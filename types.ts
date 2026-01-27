@@ -61,6 +61,8 @@ export interface AIMetadata {
 }
 
 export enum SortOption {
+  AIR_DATE_NEWEST = 'Air Date (Newest)',
+  AIR_DATE_OLDEST = 'Air Date (Oldest)',
   DATE_NEWEST = 'Date Added (Newest)',
   DATE_OLDEST = 'Date Added (Oldest)',
   NAME_ASC = 'Name (A-Z)',
