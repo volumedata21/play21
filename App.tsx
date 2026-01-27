@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
-import VideoCard from './components/VideoCard';
+import VideoCard, { RecommendationRow } from './components/VideoCard';
 import VideoPlayer from './components/VideoPlayer';
 import { XIcon, PlaylistPlusIcon, SortIcon, ChevronDownIcon } from './components/Icons';
 import { processFiles } from './services/fileService';
@@ -25,6 +25,31 @@ const App = () => {
     const [currentSubFolders, setCurrentSubFolders] = useState<string[]>([]);
     const [isFoldersExpanded, setIsFoldersExpanded] = useState(false);
     const virtuosoRef = useRef<any>(null);
+
+    const [recommendedVideos, setRecommendedVideos] = useState<VideoFile[]>([]);
+
+    const [mainScrollRef, setMainScrollRef] = useState<HTMLElement | null>(null);
+
+    useEffect(() => {
+        const fetchDiscovery = async () => {
+            try {
+                const res = await fetch('/api/discovery/random');
+                const data = await res.json();
+                if (data.success) {
+                    const mapped = data.videos.map((v: any) => ({
+                        ...v,
+                        url: v.path,
+                        subtitles: v.subtitles ? JSON.parse(v.subtitles) : [],
+                        isFavorite: Boolean(v.is_favorite)
+                    }));
+                    setRecommendedVideos(mapped);
+                }
+            } catch (e) {
+                console.error("Discovery fetch failed", e);
+            }
+        };
+        fetchDiscovery();
+    }, []);
 
     // Features State
     const [history, setHistory] = useState<string[]>([]);
@@ -557,12 +582,12 @@ const App = () => {
     return (
         <div className="h-screen w-full text-glass-text font-sans selection:bg-brand-primary selection:text-white overflow-hidden">
             <Header
-                onTriggerScan={handleScanLibrary} // Pass the new function
+                onTriggerScan={handleScanLibrary}
                 searchTerm={searchTerm}
                 onSearchChange={setSearchTerm}
                 toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
                 goHome={handleGoHome}
-                isScanning={isScanning} // Pass the loading state
+                isScanning={isScanning}
             />
 
             <div className="pt-16 h-full flex relative">
@@ -573,17 +598,18 @@ const App = () => {
                     viewState={viewState}
                     selectedFolder={selectedFolder}
                     selectedPlaylistId={selectedPlaylistId}
-
-                    // UPDATED HANDLERS
                     onSelectFolder={handleSidebarFolderSelect}
                     onSelectView={handleSidebarViewChange}
                     onSelectPlaylist={handleSidebarPlaylistSelect}
-
                     onCreatePlaylist={handleCreatePlaylist}
                     onClose={() => setIsSidebarOpen(false)}
                 />
 
-                <main className={`flex-1 h-full overflow-y-auto transition-all duration-300 ${viewState !== ViewState.WATCH && isSidebarOpen ? 'md:ml-64' : ''}`}>
+                {/* 1. Added ref={setMainScrollRef} here so Virtuoso knows this is the scroller */}
+                <main 
+                    ref={setMainScrollRef}
+                    className={`flex-1 h-full overflow-y-auto transition-all duration-300 ${viewState !== ViewState.WATCH && isSidebarOpen ? 'md:ml-64' : ''}`}
+                >
 
                     {allVideos.length === 0 && (
                         <div className="flex flex-col items-center justify-center h-full text-center px-6 animate-fade-in-up">
@@ -594,7 +620,6 @@ const App = () => {
                             <p className="text-glass-subtext mb-8 max-w-lg text-lg leading-relaxed">
                                 A personal streaming experience for your local files.
                             </p>
-
                             <div className="flex gap-4">
                                 <button
                                     onClick={handleLoadDemo}
@@ -608,7 +633,7 @@ const App = () => {
                     )}
 
                     {viewState !== ViewState.WATCH && allVideos.length > 0 && (
-                        <div className="p-6 md:p-8 animate-fade-in relative min-h-full">
+                        <div className="p-6 md:p-8 animate-fade-in min-h-full">
                             <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-white/5 pb-4">
                                 <div className="flex items-baseline gap-3">
                                     <h2 className="text-2xl font-bold text-white capitalize">
@@ -659,10 +684,6 @@ const App = () => {
                                 </button>
                             )}
 
-
-
-
-
                             {/* --- SLEEK SQUARE FOLDERS --- */}
                             {currentSubFolders.length > 0 && (
                                 <div className="mb-8 animate-fade-in">
@@ -676,7 +697,6 @@ const App = () => {
                                             </h3>
                                         </div>
 
-                                        {/* Toggle Button */}
                                         {currentSubFolders.length > 6 && (
                                             <button
                                                 onClick={() => setIsFoldersExpanded(!isFoldersExpanded)}
@@ -688,7 +708,6 @@ const App = () => {
                                         )}
                                     </div>
 
-                                    {/* The Sleek Grid */}
                                     <div className={`grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-4 transition-all duration-500 ${isFoldersExpanded ? '' : 'max-h-[100px] overflow-hidden'}`}>
                                         {currentSubFolders.map(folder => (
                                             <div
@@ -696,15 +715,10 @@ const App = () => {
                                                 onClick={() => handleEnterFolder(folder)}
                                                 className="group relative aspect-square bg-gradient-to-br from-white/10 to-transparent border border-white/5 hover:border-brand-primary/50 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_25px_rgba(59,130,246,0.15)] overflow-hidden"
                                             >
-                                                {/* Hover Glow Effect */}
                                                 <div className="absolute inset-0 bg-brand-primary/0 group-hover:bg-brand-primary/5 transition-colors duration-300" />
-
-                                                {/* Icon */}
                                                 <div className="mb-3 p-3 rounded-full bg-black/20 group-hover:bg-brand-primary/20 text-brand-primary/70 group-hover:text-brand-primary transition-all duration-300 shadow-inner">
                                                     <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" /></svg>
                                                 </div>
-
-                                                {/* Text */}
                                                 <span className="relative z-10 text-xs font-semibold text-glass-subtext group-hover:text-white text-center px-3 w-full truncate transition-colors">
                                                     {folder}
                                                 </span>
@@ -714,28 +728,12 @@ const App = () => {
                                 </div>
                             )}
 
-                            {/* --- VIRTUALIZED VIDEO GRID --- */}
+                            {/* --- SPLIT GRID WITH RECOMMENDED ROW --- */}
                             {displayedVideos.length > 0 && (
-                                <div style={{ height: 'calc(100vh - 200px)', width: '100%' }}>
-                                    <VirtuosoGrid
-                                        ref={virtuosoRef}
-                                        style={{ height: '100%' }}
-                                        data={displayedVideos}
-                                        endReached={() => fetchVideos(pagination.page, selectedFolder)}
-                                        overscan={200}
-                                        components={{
-                                            List: React.forwardRef(({ style, children, ...props }: any, ref) => (
-                                                <div
-                                                    ref={ref}
-                                                    {...props}
-                                                    style={style}
-                                                    className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-y-10 gap-x-6 pb-20 pr-4"
-                                                >
-                                                    {children}
-                                                </div>
-                                            ))
-                                        }}
-                                        itemContent={(index, video) => (
+                                <div className="pb-20">
+                                    {/* Static Row 1 & 2 (Changed to 3 cols to match bottom) */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-10 gap-x-6 mb-10 pr-4">
+                                        {displayedVideos.slice(0, 6).map(video => (
                                             <VideoCard
                                                 key={video.id}
                                                 video={video}
@@ -743,67 +741,49 @@ const App = () => {
                                                 onSelect={() => toggleSelection(video.id)}
                                                 onClick={() => handleVideoSelect(video)}
                                             />
-                                        )}
-                                    />
-                                </div>
-                            )}
-
-                            {displayedVideos.length === 0 && (
-                                <div className="col-span-full py-20 text-center">
-                                    <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4 text-glass-subtext">
-                                        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" /></svg>
+                                        ))}
                                     </div>
-                                    <p className="text-xl font-medium text-glass-subtext">No videos found here.</p>
-                                    {viewState === ViewState.FAVORITES && <p className="text-sm text-glass-subtext/60 mt-2">Mark videos with the star icon to see them here.</p>}
-                                </div>
-                            )}
 
-                            {selectedVideoIds.size > 0 && (
-                                <div className="fixed bottom-8 left-1/2 -translate-x-1/2 glass-panel px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-6 z-50 animate-fade-in border border-brand-primary/20">
-                                    <div className="flex items-center gap-3">
-                                        <div className="bg-brand-primary/20 text-brand-primary font-bold px-3 py-1 rounded-lg text-sm">
-                                            {selectedVideoIds.size} Selected
+                                    {/* The New Horizontal Discovery Row */}
+                                    {recommendedVideos.length > 0 && viewState === ViewState.HOME && !selectedFolder && (
+                                        <RecommendationRow 
+                                            videos={recommendedVideos} 
+                                            onVideoSelect={handleVideoSelect} 
+                                        />
+                                    )}
+
+                                    {/* The Remaining Library - FIXED: uses customScrollParent */}
+                                    {displayedVideos.length > 6 && (
+                                        <div className="w-full">
+                                            <VirtuosoGrid
+                                                customScrollParent={mainScrollRef} // Syncs with main scrollbar
+                                                data={displayedVideos.slice(6)}
+                                                endReached={() => fetchVideos(pagination.page, selectedFolder)}
+                                                overscan={200}
+                                                components={{
+                                                    List: React.forwardRef(({ style, children, ...props }: any, ref) => (
+                                                        <div
+                                                            ref={ref}
+                                                            {...props}
+                                                            style={style}
+                                                            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-10 gap-x-6 pr-4"
+                                                        >
+                                                            {children}
+                                                        </div>
+                                                    ))
+                                                }}
+                                                itemContent={(index, video) => (
+                                                    <VideoCard
+                                                        key={video.id}
+                                                        video={video}
+                                                        isSelected={selectedVideoIds.has(video.id)}
+                                                        onSelect={() => toggleSelection(video.id)}
+                                                        onClick={() => handleVideoSelect(video)}
+                                                    />
+                                                )}
+                                            />
                                         </div>
-                                        <button onClick={clearSelection} className="p-1 hover:bg-white/10 rounded-full transition-colors text-glass-subtext hover:text-white">
-                                            <XIcon />
-                                        </button>
-                                    </div>
-
-                                    <div className="h-8 w-px bg-white/10"></div>
-
-                                    <div className="relative">
-                                        <button
-                                            onClick={() => setShowBulkPlaylistMenu(!showBulkPlaylistMenu)}
-                                            className="flex items-center gap-2 bg-brand-primary hover:bg-brand-secondary text-white px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-lg shadow-brand-primary/20"
-                                        >
-                                            <PlaylistPlusIcon />
-                                            <span>Add to Playlist</span>
-                                        </button>
-                                        {showBulkPlaylistMenu && (
-                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-56 glass-panel rounded-xl shadow-xl py-2 overflow-hidden">
-                                                <div className="px-4 py-2 text-xs font-bold text-glass-subtext uppercase">Select Playlist</div>
-                                                {playlists.length === 0 && <div className="px-4 py-3 text-sm italic opacity-50 text-center">No playlists created</div>}
-                                                {playlists.map(p => (
-                                                    <div
-                                                        key={p.id}
-                                                        onClick={() => handleBulkAddToPlaylist(p.id)}
-                                                        className="px-4 py-3 hover:bg-white/10 cursor-pointer text-sm font-medium transition-colors flex items-center justify-between"
-                                                    >
-                                                        <span className="truncate">{p.name}</span>
-                                                        <span className="text-xs text-glass-subtext bg-white/5 px-1.5 py-0.5 rounded">{p.videoIds.length}</span>
-                                                    </div>
-                                                ))}
-                                                <div className="border-t border-white/5 mt-1 pt-1">
-                                                    <div
-                                                        onClick={() => { handleCreatePlaylist(); setShowBulkPlaylistMenu(false); }}
-                                                        className="px-4 py-3 hover:bg-white/10 cursor-pointer text-sm text-brand-secondary font-bold flex items-center gap-2"
-                                                    >
-                                                        <span className="text-lg">+</span> Create New
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -825,7 +805,6 @@ const App = () => {
                             onCreatePlaylist={handleCreatePlaylist}
                         />
                     )}
-
                 </main>
             </div>
         </div>

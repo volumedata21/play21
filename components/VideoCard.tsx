@@ -93,17 +93,17 @@ const VideoCard: React.FC<VideoCardProps> = ({ video, isSelected = false, onSele
         {thumbnail ? (
           <div className="relative w-full h-full bg-black flex items-center justify-center overflow-hidden">
             {/* 1. THE BLURRED BACKGROUND LAYER */}
-            <img 
-              src={thumbnail} 
-              alt="" 
-              className="absolute inset-0 w-full h-full object-cover blur-xl opacity-50 scale-110" 
+            <img
+              src={thumbnail}
+              alt=""
+              className="absolute inset-0 w-full h-full object-cover blur-xl opacity-50 scale-110"
             />
-            
+
             {/* 2. THE ACTUAL SHARP IMAGE LAYER */}
-            <img 
-              src={thumbnail} 
-              alt={video.name} 
-              className="relative z-10 h-full w-auto object-contain shadow-2xl transition-opacity duration-300" 
+            <img
+              src={thumbnail}
+              alt={video.name}
+              className="relative z-10 h-full w-auto object-contain shadow-2xl transition-opacity duration-300"
             />
           </div>
         ) : (
@@ -181,3 +181,46 @@ const VideoCard: React.FC<VideoCardProps> = ({ video, isSelected = false, onSele
 };
 
 export default VideoCard;
+
+export const RecommendationRow = ({ 
+  videos, 
+  onVideoSelect 
+}: { 
+  videos: VideoFile[], 
+  onVideoSelect: (v: VideoFile) => void 
+}) => {
+  return (
+    /* We added 'bg-white/[0.03]' and 'rounded-3xl' for that lighter section look */
+    <div className="my-10 animate-fade-in px-6 py-8 bg-white/[0.03] backdrop-blur-sm rounded-3xl border border-white/5 relative isolate">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-1.5 h-6 bg-brand-primary rounded-full shadow-[0_0_12px_rgba(37,99,235,0.8)]"></div>
+        <h3 className="text-xl font-bold text-white tracking-tight">Recommended for You</h3>
+      </div>
+      
+      {/* 'touch-pan-x' fixes the mobile scroll glitch */}
+      <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide snap-x touch-pan-x">
+        {videos.map((video) => (
+          <div 
+            key={video.id}
+            onClick={() => onVideoSelect(video)}
+            className="flex-none w-44 sm:w-52 snap-start group cursor-pointer"
+          >
+            <div className="relative aspect-[9/16] rounded-2xl overflow-hidden border border-white/5 bg-black transition-all duration-500 group-hover:scale-[1.03] group-hover:border-brand-primary/50 group-hover:shadow-[0_0_30px_rgba(37,99,235,0.2)]">
+              <img 
+                src={video.thumbnail || ''} 
+                className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" 
+                alt={video.name}
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent opacity-60 group-hover:opacity-80" />
+              <div className="absolute bottom-0 left-0 right-0 p-4 text-left">
+                <p className="text-sm font-bold text-white line-clamp-2 leading-snug drop-shadow-md">
+                    {video.name}
+                </p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
