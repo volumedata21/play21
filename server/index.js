@@ -92,7 +92,9 @@ function parseNfo(nfoPath) {
     const content = fs.readFileSync(nfoPath, 'utf-8');
 
     const extract = (tag) => {
-      const match = content.match(new RegExp(`<${tag}[^>]*>(.*?)</${tag}>`, 's'));
+      // This looks for the tag, but ignores any hidden spaces or weird characters inside the tag itself
+      const regex = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i');
+      const match = content.match(regex);
       return match ? match[1].trim() : null;
     };
 
@@ -322,7 +324,8 @@ async function scanMedia() {
     const updateMetaStmt = db.prepare(`
       UPDATE videos SET 
       duration = ?, thumbnail = ?, subtitles = ?, description = ?, 
-      channel = ?, genre = ?, release_date = ?, channel_avatar = ?
+      channel = ?, genre = ?, release_date = ?, channel_avatar = ?,
+      name = ?
       WHERE id = ?
     `);
 
@@ -414,6 +417,7 @@ async function scanMedia() {
           meta.genre,
           meta.aired,
           channelAvatarUrl,
+          meta.title || path.basename(fullPath, path.extname(fullPath)),
           id
         );
 
