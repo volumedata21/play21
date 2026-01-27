@@ -729,6 +729,18 @@ app.get('/api/folders', (req, res) => {
   }
 });
 
+// Remove a video from a specific playlist
+app.delete('/api/playlists/:playlistId/videos/:videoId', (req, res) => {
+  const { playlistId, videoId } = req.params;
+  try {
+    db.prepare('DELETE FROM playlist_videos WHERE playlist_id = ? AND video_id = ?')
+      .run(playlistId, videoId);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: "Failed to remove video" });
+  }
+});
+
 // Run scan on startup
 scanMedia();
 

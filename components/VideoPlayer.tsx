@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { VideoFile, Playlist } from '../types';
-import { LikeIcon, ShareIcon, MenuIcon, CameraIcon, StarIcon, StepBackIcon, StepForwardIcon, PlaylistPlusIcon, NextVideoIcon, PrevVideoIcon, SpeedIcon, CCIcon, DownloadIcon, LinkIcon, XIcon } from './Icons';
+import { LikeIcon, ShareIcon, MenuIcon, CameraIcon, StarIcon, StepBackIcon, StepForwardIcon, PlaylistPlusIcon, NextVideoIcon, HistoryIcon, PrevVideoIcon, SpeedIcon, CCIcon, DownloadIcon, LinkIcon, XIcon } from './Icons';
 import { formatViews, formatTimeAgo } from '../services/fileService';
 
 interface VideoPlayerProps {
@@ -12,6 +12,7 @@ interface VideoPlayerProps {
     onVideoSelect: (video: VideoFile) => void;
     onUpdateVideo: (video: VideoFile) => void;
     onAddToPlaylist: (videoId: string, playlistId: string) => void;
+    onToggleWatchLater: (videoId: string) => void;
     onNextVideo: () => void;
     onPrevVideo: () => void;
     onCreatePlaylist: () => void;
@@ -66,6 +67,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     onVideoSelect,
     onUpdateVideo,
     onAddToPlaylist,
+    onToggleWatchLater,
     onNextVideo,
     onPrevVideo,
     onCreatePlaylist
@@ -201,7 +203,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
             // This ensures both the list AND the currently playing video 
             // object get the new 'isFavorite' value.
             onUpdateVideo({ ...video, isFavorite: newFavoriteStatus });
-            
+
         } catch (e) {
             console.error("Failed to update favorite", e);
         }
@@ -418,62 +420,80 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                 <span>Favorite</span>
                             </button>
 
-                            {/* 3. Sleek Playlist Button (Icon Only) */}
-<div className="relative">
-    <button 
-        onClick={() => setShowPlaylistMenu(!showPlaylistMenu)} 
-        className="glass-button p-2.5 rounded-full text-glass-subtext hover:text-white transition-all"
-        title="Add to Playlist"
-    >
-        <PlaylistPlusIcon />
-    </button>
-    
-    {showPlaylistMenu && (
-        <>
-            <div className="fixed inset-0 z-40" onClick={() => setShowPlaylistMenu(false)} />
-            <div className="absolute top-full right-0 mt-2 w-52 glass-panel rounded-xl shadow-2xl py-2 z-50 border border-white/10 animate-fade-in">
-                <div className="px-4 py-2 text-[10px] font-bold text-glass-subtext uppercase tracking-widest">Select Playlist</div>
-                <div className="max-h-48 overflow-y-auto">
-                    {playlists.map(p => {
-                        // 2. Check if video is already in this playlist
-                        const isAlreadyIn = p.videoIds.includes(video.id);
-                        
-                        return (
-                            <div
-                                key={p.id}
-                                onClick={() => { 
-                                    if(!isAlreadyIn) onAddToPlaylist(video.id, p.id); 
-                                    setShowPlaylistMenu(false); 
+                            {/* NEW: Watch Later Button */}
+                            {/* NEW: Safer Watch Later Button */}
+                            <button
+                                onClick={() => {
+                                    if (onToggleWatchLater && video?.id) {
+                                        onToggleWatchLater(video.id);
+                                    }
                                 }}
-                                className={`px-4 py-2.5 flex items-center justify-between cursor-pointer text-sm font-medium transition-colors border-b border-white/5 last:border-0 
-                                    ${isAlreadyIn ? 'text-brand-primary bg-brand-primary/5 cursor-default' : 'hover:bg-white/10'}`}
+                                className={`glass-button p-2.5 rounded-full transition-all ${playlists?.find(p => p.name === 'Watch Later')?.videoIds?.includes(video.id)
+                                        ? 'text-brand-primary bg-brand-primary/10 border-brand-primary/30'
+                                        : 'text-glass-subtext hover:text-white'
+                                    }`}
+                                title="Watch Later"
                             >
-                                <span className="truncate">{p.name}</span>
-                                {isAlreadyIn && (
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                    </svg>
+                                <HistoryIcon />
+                            </button>
+
+
+                            {/* 3. Sleek Playlist Button (Icon Only) */}
+                            <div className="relative">
+                                <button
+                                    onClick={() => setShowPlaylistMenu(!showPlaylistMenu)}
+                                    className="glass-button p-2.5 rounded-full text-glass-subtext hover:text-white transition-all"
+                                    title="Add to Playlist"
+                                >
+                                    <PlaylistPlusIcon />
+                                </button>
+
+                                {showPlaylistMenu && (
+                                    <>
+                                        <div className="fixed inset-0 z-40" onClick={() => setShowPlaylistMenu(false)} />
+                                        <div className="absolute top-full right-0 mt-2 w-52 glass-panel rounded-xl shadow-2xl py-2 z-50 border border-white/10 animate-fade-in">
+                                            <div className="px-4 py-2 text-[10px] font-bold text-glass-subtext uppercase tracking-widest">Select Playlist</div>
+                                            <div className="max-h-48 overflow-y-auto">
+                                                {playlists.map(p => {
+                                                    // 2. Check if video is already in this playlist
+                                                    const isAlreadyIn = p.videoIds.includes(video.id);
+
+                                                    return (
+                                                        <div
+                                                            key={p.id}
+                                                            onClick={() => {
+                                                                if (!isAlreadyIn) onAddToPlaylist(video.id, p.id);
+                                                                setShowPlaylistMenu(false);
+                                                            }}
+                                                            className={`px-4 py-2.5 flex items-center justify-between cursor-pointer text-sm font-medium transition-colors border-b border-white/5 last:border-0 
+                                    ${isAlreadyIn ? 'text-brand-primary bg-brand-primary/5 cursor-default' : 'hover:bg-white/10'}`}
+                                                        >
+                                                            <span className="truncate">{p.name}</span>
+                                                            {isAlreadyIn && (
+                                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                                </svg>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                            <div className="mt-1 pt-1 border-t border-white/10">
+                                                <button
+                                                    onClick={async () => {
+                                                        // 1. App.tsx will now handle creating and adding the video
+                                                        onCreatePlaylist();
+                                                        setShowPlaylistMenu(false);
+                                                    }}
+                                                    className="w-full text-left px-4 py-3 text-sm font-bold text-brand-accent hover:bg-white/10 transition-colors flex items-center gap-2"
+                                                >
+                                                    <span className="text-lg">+</span> Create New
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </>
                                 )}
                             </div>
-                        );
-                    })}
-                </div>
-                <div className="mt-1 pt-1 border-t border-white/10">
-                    <button
-                        onClick={async () => { 
-                            // 1. App.tsx will now handle creating and adding the video
-                            onCreatePlaylist(); 
-                            setShowPlaylistMenu(false); 
-                        }}
-                        className="w-full text-left px-4 py-3 text-sm font-bold text-brand-accent hover:bg-white/10 transition-colors flex items-center gap-2"
-                    >
-                        <span className="text-lg">+</span> Create New
-                    </button>
-                </div>
-            </div>
-        </>
-    )}
-</div>
 
                             <a
                                 href={video.url}

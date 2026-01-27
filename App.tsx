@@ -437,29 +437,29 @@ const App = () => {
     };
 
     const handleCreatePlaylist = async () => {
-    const name = window.prompt("Enter Playlist Name:");
-    if (name) {
-        const res = await fetch('/api/playlists', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name })
-        });
-        const data = await res.json();
+        const name = window.prompt("Enter Playlist Name:");
+        if (name) {
+            const res = await fetch('/api/playlists', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name })
+            });
+            const data = await res.json();
 
-        if (data.success) {
-            const newPlaylist = data.playlist;
-            
-            // NEW: If we are currently in WATCH mode, add this video to the new playlist automatically
-            if (viewState === ViewState.WATCH && currentVideo) {
-                await handleAddToPlaylist(currentVideo.id, newPlaylist.id);
-                // Update the local object so the checkmark appears immediately
-                newPlaylist.videoIds = [currentVideo.id];
+            if (data.success) {
+                const newPlaylist = data.playlist;
+
+                // NEW: If we are currently in WATCH mode, add this video to the new playlist automatically
+                if (viewState === ViewState.WATCH && currentVideo) {
+                    await handleAddToPlaylist(currentVideo.id, newPlaylist.id);
+                    // Update the local object so the checkmark appears immediately
+                    newPlaylist.videoIds = [currentVideo.id];
+                }
+
+                setPlaylists([...playlists, newPlaylist]);
             }
-
-            setPlaylists([...playlists, newPlaylist]);
         }
-    }
-};
+    };
 
     const handleAddToPlaylist = async (videoId: string, playlistId: string) => {
         // NEW: Tell the database to link this video to this playlist
@@ -476,6 +476,48 @@ const App = () => {
             }
             return p;
         }));
+    };
+
+    const handleToggleWatchLater = async (videoId: string) => {
+        // 1. Try to find the playlist
+        let watchLater = playlists.find(p => p.name === 'Watch Later');
+
+        // 2. If it doesn't exist, create it automatically
+        if (!watchLater) {
+            try {
+                const res = await fetch('/api/playlists', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: 'Watch Later' })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    watchLater = data.playlist;
+                    // Add the new playlist to local state so the UI updates
+                    setPlaylists(prev => [...prev, data.playlist]);
+                } else {
+                    return; // Stop if creation failed
+                }
+            } catch (e) {
+                console.error("Failed to auto-create Watch Later", e);
+                return;
+            }
+        }
+
+        // 3. Now perform the toggle as usual
+        const isAdded = watchLater.videoIds.includes(videoId);
+
+        if (isAdded) {
+            await fetch(`/api/playlists/${watchLater.id}/videos/${videoId}`, { method: 'DELETE' });
+            setPlaylists(prev => prev.map(p => p.id === watchLater!.id
+                ? { ...p, videoIds: p.videoIds.filter(id => id !== videoId) }
+                : p
+            ));
+        } else {
+            await handleAddToPlaylist(videoId, watchLater.id);
+            // Note: handleAddToPlaylist already updates the playlists state
+        }
     };
 
     const handleGoHome = () => {
@@ -777,6 +819,7 @@ const App = () => {
                             onVideoSelect={handleVideoSelect}
                             onUpdateVideo={handleUpdateVideo}
                             onAddToPlaylist={handleAddToPlaylist}
+                            onToggleWatchLater={handleToggleWatchLater}
                             onNextVideo={handleNextVideo}
                             onPrevVideo={handlePrevVideo}
                             onCreatePlaylist={handleCreatePlaylist}
