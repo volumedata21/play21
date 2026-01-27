@@ -61,13 +61,13 @@ const App = () => {
                 try {
                     if (v.subtitles && typeof v.subtitles === 'string') parsedSubtitles = JSON.parse(v.subtitles);
                 } catch (e) { }
-                
-                return { 
-                    ...v, 
-                    url: v.path, 
+
+                return {
+                    ...v,
+                    url: v.path,
                     subtitles: parsedSubtitles,
                     // NEW: Convert SQLite 1/0 to true/false so the UI stays starred
-                    isFavorite: Boolean(v.is_favorite) 
+                    isFavorite: Boolean(v.is_favorite)
                 };
             });
 
@@ -100,7 +100,7 @@ const App = () => {
     // 1. Initial Load
     useEffect(() => {
         fetchVideos(1, null, true);
-        fetchFolderList(); 
+        fetchFolderList();
 
         // NEW: This function talks to your database to get your saved data
         const loadPersistedData = async () => {
@@ -271,10 +271,23 @@ const App = () => {
             });
         }
 
-        // 3. Search
+        // 3. Advanced Flexible Search
         if (searchTerm) {
-            const lower = searchTerm.toLowerCase();
-            videos = videos.filter(v => v.name.toLowerCase().includes(lower));
+            const tokens = searchTerm.toLowerCase().split(/\s+/).filter(t => t.length > 0);
+
+            videos = videos.filter(v => {
+                // Create a single string of everything we want to search
+                const searchSurface = [
+                    v.name,
+                    v.channel,
+                    v.genre,
+                    v.folder,
+                    v.description
+                ].join(' ').toLowerCase();
+
+                // Ensure EVERY word the user typed exists somewhere in that video's metadata
+                return tokens.every(token => searchSurface.includes(token));
+            });
         }
 
         // 4. Sorting
@@ -335,10 +348,10 @@ const App = () => {
         });
 
         // Simple history push for the browser back button
-        window.history.pushState({ 
-            view: ViewState.WATCH, 
-            videoId: video.id, 
-            folder: selectedFolder 
+        window.history.pushState({
+            view: ViewState.WATCH,
+            videoId: video.id,
+            folder: selectedFolder
         }, '');
 
         setCurrentVideo(video);
