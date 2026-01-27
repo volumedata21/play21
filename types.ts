@@ -6,6 +6,7 @@ export interface VideoFile {
   folder: string;
   url: string;
   thumbnail?: string;
+  youtubeId?: string; 
   
   // --- SUBTITLE SUPPORT ---
   subtitles?: {

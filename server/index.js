@@ -92,7 +92,6 @@ function parseNfo(nfoPath) {
     const content = fs.readFileSync(nfoPath, 'utf-8');
 
     const extract = (tag) => {
-      // This looks for the tag, but ignores any hidden spaces or weird characters inside the tag itself
       const regex = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i');
       const match = content.match(regex);
       return match ? match[1].trim() : null;
@@ -118,10 +117,11 @@ function parseNfo(nfoPath) {
       plot: decode(extract('plot')),
       channel: decode(extract('showtitle')),
       genre: decode(extract('genre')),
-      aired: extract('aired') // Keep date as string
+      aired: extract('aired'),
+      youtubeId: extract('uniqueid') // NEW: Extract the ID
     };
   } catch (e) {
-    return null; // No NFO or read error
+    return null;
   }
 }
 
