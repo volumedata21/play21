@@ -6,5 +6,4 @@ dist
 /media
 /data
 compose.dev.yaml
-oauth2-proxy.cfg
 
