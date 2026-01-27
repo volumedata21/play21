@@ -55,12 +55,20 @@ const App = () => {
             const data = await response.json();
 
             // Process subtitles (safe parsing)
+            // Process subtitles and database favorites
             const newVideos = data.videos.map((v: any) => {
                 let parsedSubtitles = [];
                 try {
                     if (v.subtitles && typeof v.subtitles === 'string') parsedSubtitles = JSON.parse(v.subtitles);
                 } catch (e) { }
-                return { ...v, url: v.path, subtitles: parsedSubtitles };
+                
+                return { 
+                    ...v, 
+                    url: v.path, 
+                    subtitles: parsedSubtitles,
+                    // NEW: Convert SQLite 1/0 to true/false so the UI stays starred
+                    isFavorite: Boolean(v.is_favorite) 
+                };
             });
 
             if (reset) {
@@ -89,9 +97,28 @@ const App = () => {
     // Trigger the fetch when the app first loads
     // 1. Initial Load
     // 1. Initial Load
+    // 1. Initial Load
     useEffect(() => {
         fetchVideos(1, null, true);
-        fetchFolderList(); // <--- Call the new function
+        fetchFolderList(); 
+
+        // NEW: This function talks to your database to get your saved data
+        const loadPersistedData = async () => {
+            try {
+                // Get Playlists from the database
+                const plRes = await fetch('/api/playlists');
+                const plData = await plRes.json();
+                setPlaylists(plData.playlists);
+
+                // Get Watch History from the database
+                const histRes = await fetch('/api/history');
+                const histData = await histRes.json();
+                setHistory(histData.history);
+            } catch (e) {
+                console.error("Failed to load persistence layer", e);
+            }
+        };
+        loadPersistedData();
     }, []);
 
     useEffect(() => {
@@ -294,13 +321,20 @@ const App = () => {
     };
 
     const handleVideoSelect = (video: VideoFile) => {
-        // Update watch history
+        // Update the list in the browser so it feels fast
         setHistory(prev => {
             const newHistory = prev.filter(id => id !== video.id);
             return [...newHistory, video.id];
         });
 
-        // Simple history push without scroll offsets
+        // NEW: Tell the server to save this to the SQLite history table
+        fetch('/api/history', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ videoId: video.id })
+        });
+
+        // Simple history push for the browser back button
         window.history.pushState({ 
             view: ViewState.WATCH, 
             videoId: video.id, 
@@ -331,10 +365,23 @@ const App = () => {
         setShowBulkPlaylistMenu(false);
     };
 
-    const handleBulkAddToPlaylist = (playlistId: string) => {
+    const handleBulkAddToPlaylist = async (playlistId: string) => {
+        // NEW: Convert the 'Set' of IDs into an array so we can loop through them
+        const videoIdsArray = Array.from(selectedVideoIds);
+
+        // NEW: For every video ID you selected, tell the database to add it to the playlist
+        for (const videoId of videoIdsArray) {
+            await fetch(`/api/playlists/${playlistId}/videos`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ videoId })
+            });
+        }
+
+        // Update the screen so the user sees the videos appear in the playlist
         setPlaylists(prev => prev.map(p => {
             if (p.id === playlistId) {
-                const newIds = new Set([...p.videoIds, ...Array.from(selectedVideoIds)]);
+                const newIds = new Set([...p.videoIds, ...videoIdsArray]);
                 return { ...p, videoIds: Array.from(newIds) };
             }
             return p;
@@ -376,19 +423,33 @@ const App = () => {
         setCurrentVideo(updated);
     };
 
-    const handleCreatePlaylist = () => {
+    const handleCreatePlaylist = async () => {
         const name = window.prompt("Enter Playlist Name:");
         if (name) {
-            const newPlaylist: Playlist = {
-                id: `pl-${Date.now()}`,
-                name,
-                videoIds: []
-            };
-            setPlaylists([...playlists, newPlaylist]);
+            // NEW: Send the name to the server to save in the database
+            const res = await fetch('/api/playlists', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name })
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                // Use the real playlist object the server created (including its DB ID)
+                setPlaylists([...playlists, data.playlist]);
+            }
         }
     };
 
-    const handleAddToPlaylist = (videoId: string, playlistId: string) => {
+    const handleAddToPlaylist = async (videoId: string, playlistId: string) => {
+        // NEW: Tell the database to link this video to this playlist
+        await fetch(`/api/playlists/${playlistId}/videos`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ videoId })
+        });
+
+        // Update the screen so the user sees the change
         setPlaylists(prev => prev.map(p => {
             if (p.id === playlistId && !p.videoIds.includes(videoId)) {
                 return { ...p, videoIds: [...p.videoIds, videoId] };
