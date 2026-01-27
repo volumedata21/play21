@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { VideoFile, Playlist } from '../types';
-import { LikeIcon, ShareIcon, MenuIcon, CameraIcon, StarIcon, StepBackIcon, StepForwardIcon, PlaylistPlusIcon, NextVideoIcon, HistoryIcon, PrevVideoIcon, SpeedIcon, CCIcon, DownloadIcon, LinkIcon, XIcon } from './Icons';
+import { LikeIcon, ShareIcon, MenuIcon, CameraIcon, StarIcon, YouTubeIcon, StepBackIcon, StepForwardIcon, PlaylistPlusIcon, NextVideoIcon, HistoryIcon, PrevVideoIcon, SpeedIcon, CCIcon, DownloadIcon, LinkIcon, XIcon } from './Icons';
 import { formatViews, formatTimeAgo } from '../services/fileService';
 
 interface VideoPlayerProps {
@@ -429,8 +429,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                     }
                                 }}
                                 className={`glass-button p-2.5 rounded-full transition-all ${playlists?.find(p => p.name === 'Watch Later')?.videoIds?.includes(video.id)
-                                        ? 'text-brand-primary bg-brand-primary/10 border-brand-primary/30'
-                                        : 'text-glass-subtext hover:text-white'
+                                    ? 'text-brand-primary bg-brand-primary/10 border-brand-primary/30'
+                                    : 'text-glass-subtext hover:text-white'
                                     }`}
                                 title="Watch Later"
                             >
@@ -495,6 +495,29 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                 )}
                             </div>
 
+                            {/* 5. Smaller YouTube Icon Button (Icon only) */}
+                                <div className="relative">
+                                    {video.youtubeId ? (
+                                        <a
+                                            href={`https://www.youtube.com/watch?v=${video.youtubeId}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center justify-center glass-button p-2.5 rounded-full text-brand-primary border-brand-primary/30 bg-brand-primary/10 hover:bg-brand-primary/20 hover:shadow-[0_0_15px_rgba(37,99,235,0.4)] transition-all animate-glow-flow"
+                                            title="Watch on YouTube"
+                                        >
+                                            <YouTubeIcon />
+                                        </a>
+                                    ) : (
+                                        <button
+                                            disabled
+                                            className="flex items-center justify-center glass-button p-2.5 rounded-full opacity-20 cursor-not-allowed grayscale border-white/5 text-glass-subtext"
+                                            title="YouTube link unavailable"
+                                        >
+                                            <YouTubeIcon />
+                                        </button>
+                                    )}
+                                </div>
+
                             <a
                                 href={video.url}
                                 download={video.name}
@@ -505,9 +528,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             </a>
 
                             <div className="relative">
-                                <button onClick={() => setShowShareMenu(!showShareMenu)} className="glass-button p-2.5 rounded-full">
-                                    <ShareIcon />
-                                </button>
                                 {showShareMenu && (
                                     <>
                                         <div className="fixed inset-0 z-40" onClick={() => setShowShareMenu(false)} />
