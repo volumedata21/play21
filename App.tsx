@@ -437,22 +437,29 @@ const App = () => {
     };
 
     const handleCreatePlaylist = async () => {
-        const name = window.prompt("Enter Playlist Name:");
-        if (name) {
-            // NEW: Send the name to the server to save in the database
-            const res = await fetch('/api/playlists', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name })
-            });
-            const data = await res.json();
+    const name = window.prompt("Enter Playlist Name:");
+    if (name) {
+        const res = await fetch('/api/playlists', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+        });
+        const data = await res.json();
 
-            if (data.success) {
-                // Use the real playlist object the server created (including its DB ID)
-                setPlaylists([...playlists, data.playlist]);
+        if (data.success) {
+            const newPlaylist = data.playlist;
+            
+            // NEW: If we are currently in WATCH mode, add this video to the new playlist automatically
+            if (viewState === ViewState.WATCH && currentVideo) {
+                await handleAddToPlaylist(currentVideo.id, newPlaylist.id);
+                // Update the local object so the checkmark appears immediately
+                newPlaylist.videoIds = [currentVideo.id];
             }
+
+            setPlaylists([...playlists, newPlaylist]);
         }
-    };
+    }
+};
 
     const handleAddToPlaylist = async (videoId: string, playlistId: string) => {
         // NEW: Tell the database to link this video to this playlist
