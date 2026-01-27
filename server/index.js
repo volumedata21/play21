@@ -13,7 +13,7 @@ const PORT = 3001;
 // ---------------------------------------------------------
 // 1. DIRECTORY SETUP
 // ---------------------------------------------------------
-const mediaDir = path.join(process.cwd(), 'media');
+const mediaDir = process.env.MEDIA_DIR || path.join(process.cwd(), 'media');
 const dataDir = path.join(process.cwd(), 'data');
 const thumbnailsDir = path.join(dataDir, 'thumbnails');
 const subsDir = path.join(dataDir, 'subtitles');
@@ -99,17 +99,16 @@ function parseNfo(nfoPath) {
     // Simple XML entity decoder (turns &apos; into ' etc)
     const decode = (str) => {
       if (!str) return null;
-      .replace(/<!\[CDATA\[(.*?)\]\]>/gs, '$1') // This strips out the CDATA "wrapper"
       return str
+        .replace(/<!\[CDATA\[(.*?)\]\]>/gs, '$1') // Fix for titles wrapped in CDATA
         .replace(/&amp;/g, '&')
         .replace(/&lt;/g, '<')
         .replace(/&gt;/g, '>')
         .replace(/&quot;/g, '"')
         .replace(/&apos;/g, "'")
-        // NEW: Handle numeric entities like &#39; (apostrophe)
         .replace(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec))
-        // NEW: Handle hex entities like &#x27;
-        .replace(/&#x([0-9A-Fa-f]+);/g, (match, hex) => String.fromCharCode(parseInt(hex, 16)));
+        .replace(/&#x([0-9A-Fa-f]+);/g, (match, hex) => String.fromCharCode(parseInt(hex, 16)))
+        .trim(); // Removes accidental hidden spaces or new lines
     };
 
     return {
