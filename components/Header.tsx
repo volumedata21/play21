@@ -10,11 +10,11 @@ interface HeaderProps {
   isScanning?: boolean; // Optional prop to show a loading state
 }
 
-const Header: React.FC<HeaderProps> = ({ 
-  onTriggerScan, 
-  searchTerm, 
-  onSearchChange, 
-  toggleSidebar, 
+const Header: React.FC<HeaderProps> = ({
+  onTriggerScan,
+  searchTerm,
+  onSearchChange,
+  toggleSidebar,
   goHome,
   isScanning = false
 }) => {
@@ -43,9 +43,19 @@ const Header: React.FC<HeaderProps> = ({
         <button onClick={toggleSidebar} className="p-2 text-glass-subtext hover:text-white transition-colors rounded-full hover:bg-white/5">
           <MenuIcon />
         </button>
+
         <div onClick={goHome} className="flex items-center gap-2 cursor-pointer group">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-brand-primary to-brand-accent flex items-center justify-center shadow-lg shadow-brand-primary/20 group-hover:shadow-brand-primary/40 transition-shadow">
-            <svg className="w-4 h-4 text-white fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+          {/* Container with an animated glow instead of a solid background */}
+          <div className="relative w-9 h-9 flex items-center justify-center">
+            {/* The Animated Glow Effect */}
+            <div className="absolute inset-0 bg-brand-primary rounded-full blur-md opacity-70 group-hover:opacity-100 group-hover:scale-115 animate-pulse transition-all duration-700 shadow-[0_0_20px_5px_rgba(37,99,235,0.6)]"></div>
+
+            {/* Your Logo */}
+            <img
+              src="/logo.png"
+              alt="Play21 Logo"
+              className="relative z-10 w-full h-full object-contain"
+            />
           </div>
           <span className="text-xl font-bold tracking-tight text-white/90">Play21</span>
         </div>
@@ -68,20 +78,20 @@ const Header: React.FC<HeaderProps> = ({
 
       <div className="flex items-center gap-4">
         {/* THE NEW SCAN BUTTON */}
-        <button 
+        <button
           onClick={onTriggerScan}
           disabled={isScanning}
           className={`flex items-center gap-2 glass-button px-4 py-2 rounded-xl text-sm font-medium transition-all ${isScanning ? 'opacity-50 cursor-wait' : 'text-white/90 hover:bg-white/10'}`}
           title="Scan Media Folder"
         >
-          <UploadIcon /> 
+          <UploadIcon />
           <span className="hidden sm:inline">
             {isScanning ? 'Scanning...' : 'Scan Library'}
           </span>
         </button>
-        
+
         <div className="relative">
-          <button 
+          <button
             onClick={() => setShowUserMenu(!showUserMenu)}
             className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-700 to-brand-dark border border-white/10 flex items-center justify-center text-xs font-bold shadow-lg overflow-hidden hover:ring-2 ring-brand-primary transition-all"
           >
@@ -97,7 +107,7 @@ const Header: React.FC<HeaderProps> = ({
               <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
               <div className="absolute right-0 top-full mt-2 w-48 glass-panel rounded-xl shadow-2xl py-2 z-50 border border-white/10 animate-fade-in">
                 <div className="px-4 py-2 border-b border-white/5 mb-1">
-                   <p className="text-xs font-bold text-glass-subtext uppercase">User Options</p>
+                  <p className="text-xs font-bold text-glass-subtext uppercase">User Options</p>
                 </div>
                 <button onClick={handleChangeAvatar} className="w-full text-left px-4 py-2 text-sm text-white/80 hover:bg-brand-primary/20 hover:text-white transition-colors">
                   Change Avatar
