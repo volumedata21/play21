@@ -458,6 +458,16 @@ app.use('/media', express.static(mediaDir));
 app.use('/thumbnails', express.static(thumbnailsDir));
 app.use('/subtitles', express.static(subsDir));
 
+// Get 7 completely random videos from the entire library
+app.get('/api/discovery/random', (req, res) => {
+  try {
+    const randomVideos = db.prepare('SELECT * FROM videos ORDER BY RANDOM() LIMIT 7').all();
+    res.json({ success: true, videos: randomVideos });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // --- VIDEOS (Paginated) ---
 app.get('/api/videos', (req, res) => {
   const { page, limit, folder, sort } = req.query; // Get 'sort' from the request
