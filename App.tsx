@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import VideoCard from './components/VideoCard';
@@ -19,10 +19,11 @@ const App = () => {
     const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [isScanning, setIsScanning] = useState(false);
-    const [sortOption, setSortOption] = useState<SortOption>(SortOption.AIR_DATE_NEWEST);    const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
+    const [sortOption, setSortOption] = useState<SortOption>(SortOption.AIR_DATE_NEWEST); const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
     const [pagination, setPagination] = useState({ page: 1, hasMore: true, isLoading: false });
     const [currentSubFolders, setCurrentSubFolders] = useState<string[]>([]);
     const [isFoldersExpanded, setIsFoldersExpanded] = useState(false);
+    const virtuosoRef = useRef<any>(null);
 
     // Features State
     const [history, setHistory] = useState<string[]>([]);
@@ -138,35 +139,27 @@ const App = () => {
         }
     }, [selectedFolder]);
 
-    // --- NEW: HANDLE BROWSER BACK BUTTON ---
+    // --- HANDLE BROWSER BACK BUTTON ---
     useEffect(() => {
-        // 1. Set initial state so we have a base to go back to
-        window.history.replaceState({ view: ViewState.HOME, folder: null, videoId: null }, '');
+        if (!window.history.state) {
+            window.history.replaceState({ view: ViewState.HOME, folder: null, videoId: null }, '');
+        }
 
         const onPopState = (event: PopStateEvent) => {
-            if (event.state) {
-                // Restore View & Folder
-                setViewState(event.state.view || ViewState.HOME);
-                setSelectedFolder(event.state.folder || null);
-                setSelectedPlaylistId(event.state.playlistId || null);
+            const state = event.state;
+            if (!state) return;
 
-                // Restore Video (if any)
-                if (event.state.videoId) {
-                    const vid = allVideos.find(v => v.id === event.state.videoId);
-                    if (vid) {
-                        setCurrentVideo(vid);
-                        setIsSidebarOpen(false); // Optional: close sidebar for cinema mode
-                    }
-                } else {
-                    setCurrentVideo(null);
-                    // Re-open sidebar if we just exited a video
-                    if (window.innerWidth >= 768) setIsSidebarOpen(true);
-                }
+            setViewState(state.view || ViewState.HOME);
+            setSelectedFolder(state.folder || null);
+            setSelectedPlaylistId(state.playlistId || null);
+
+            if (state.videoId) {
+                const vid = allVideos.find(v => v.id === state.videoId);
+                if (vid) setCurrentVideo(vid);
             } else {
-                // Fallback to Home if state is empty
-                setViewState(ViewState.HOME);
-                setSelectedFolder(null);
                 setCurrentVideo(null);
+                // Re-open sidebar on desktop when returning from watch view
+                if (window.innerWidth >= 768) setIsSidebarOpen(true);
             }
         };
 
@@ -299,18 +292,25 @@ const App = () => {
     };
 
     const handleVideoSelect = (video: VideoFile) => {
+        // Update watch history
         setHistory(prev => {
             const newHistory = prev.filter(id => id !== video.id);
             return [...newHistory, video.id];
         });
 
-        // PUSH HISTORY
-        window.history.pushState({ view: ViewState.WATCH, videoId: video.id }, '');
+        // Simple history push without scroll offsets
+        window.history.pushState({ 
+            view: ViewState.WATCH, 
+            videoId: video.id, 
+            folder: selectedFolder 
+        }, '');
 
         setCurrentVideo(video);
         setViewState(ViewState.WATCH);
         setIsSidebarOpen(false);
     };
+
+
 
     const toggleSelection = (id: string) => {
         setSelectedVideoIds(prev => {
@@ -396,14 +396,11 @@ const App = () => {
     };
 
     const handleGoHome = () => {
-        // PUSH HISTORY
         window.history.pushState({ view: ViewState.HOME, folder: null }, '');
-
         setViewState(ViewState.HOME);
         setCurrentVideo(null);
         setSelectedFolder(null);
     };
-
     const relatedVideos = useMemo(() => {
         if (!currentVideo) return [];
 
@@ -414,7 +411,7 @@ const App = () => {
 
     // --- SIDEBAR WRAPPERS ---
     const handleSidebarViewChange = (newView: ViewState) => {
-        window.history.pushState({ view: newView }, '');
+        window.history.pushState({ view: newView, folder: null }, '');
         setViewState(newView);
         if (newView === ViewState.HOME) setSelectedFolder(null);
     };
@@ -596,6 +593,7 @@ const App = () => {
                             {displayedVideos.length > 0 && (
                                 <div style={{ height: 'calc(100vh - 200px)', width: '100%' }}>
                                     <VirtuosoGrid
+                                        ref={virtuosoRef}
                                         style={{ height: '100%' }}
                                         data={displayedVideos}
                                         endReached={() => fetchVideos(pagination.page, selectedFolder)}
