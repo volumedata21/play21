@@ -91,7 +91,21 @@ const VideoCard: React.FC<VideoCardProps> = ({ video, isSelected = false, onSele
         )}
 
         {thumbnail ? (
-          <img src={thumbnail} alt={video.name} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity duration-300" />
+          <div className="relative w-full h-full bg-black flex items-center justify-center overflow-hidden">
+            {/* 1. THE BLURRED BACKGROUND LAYER */}
+            <img 
+              src={thumbnail} 
+              alt="" 
+              className="absolute inset-0 w-full h-full object-cover blur-xl opacity-50 scale-110" 
+            />
+            
+            {/* 2. THE ACTUAL SHARP IMAGE LAYER */}
+            <img 
+              src={thumbnail} 
+              alt={video.name} 
+              className="relative z-10 h-full w-auto object-contain shadow-2xl transition-opacity duration-300" 
+            />
+          </div>
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-white/5 backdrop-blur-sm">
             <div className="scale-75 opacity-50"><PlayIcon /></div>
