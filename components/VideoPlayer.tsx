@@ -253,16 +253,18 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const timeAgo = video.timeAgo || formatTimeAgo();
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pt-8 max-w-[1600px] mx-auto px-6 lg:px-12 animate-fade-in pb-20">
+        // 1. CHANGED: Removed px-6 on mobile (px-0) so video touches edges. Added pt-0 on mobile.
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pt-0 lg:pt-8 max-w-[1600px] mx-auto px-0 lg:px-12 animate-fade-in pb-20">
             {/* Main Content */}
             <div className="lg:col-span-2">
                 {/* Player Container */}
                 <div className="relative group">
-                    <div className="absolute -inset-1 bg-gradient-to-r from-brand-primary via-brand-secondary to-brand-accent rounded-2xl blur-2xl opacity-20 group-hover:opacity-30 transition-opacity duration-1000"></div>
-                    <div className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10 flex items-center justify-center">
+                    <div className="absolute -inset-1 bg-gradient-to-r from-brand-primary via-brand-secondary to-brand-accent rounded-2xl blur-2xl opacity-20 group-hover:opacity-30 transition-opacity duration-1000 hidden md:block"></div>
+                    
+                    {/* 2. CHANGED: rounded-none on mobile, md:rounded-2xl on desktop */}
+                    <div className="relative w-full aspect-video bg-black rounded-none md:rounded-2xl overflow-hidden shadow-2xl ring-0 md:ring-1 ring-white/10 flex items-center justify-center">
 
-                        {/* 1. DYNAMIC BLURRED BACKGROUND */}
-                        {/* We use the thumbnail but set it to fill the entire container background */}
+                        {/* Dynamic Background */}
                         {video.thumbnail && (
                             <div
                                 className="absolute inset-0 w-full h-full bg-cover bg-center blur-3xl opacity-50 scale-110 pointer-events-none"
@@ -270,18 +272,13 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             />
                         )}
 
-                        {/* 2. THE VIDEO LAYER */}
+                        {/* Video Element */}
                         <video
                             ref={videoRef}
                             src={`/api/stream/${video.id}`}
                             controls
                             autoPlay
                             crossOrigin="anonymous"
-                            /* FIX: 'object-contain' is the magic word here. 
-                               It keeps the video at its native ratio (no squishing) 
-                               BUT keeps the video element itself at 16:9 so the 
-                               controls stretch across the whole bottom bar.
-                            */
                             className="relative z-10 w-full h-full object-contain"
                             onPause={saveProgress}
                             onEnded={() => {
@@ -304,7 +301,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                 />
                             ))}
                         </video>
-
+                        
                         {subtitlesEnabled && !hasSubtitles && (
                             <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-black/60 text-white px-4 py-1 rounded text-lg pointer-events-none z-20">
                                 [No Subtitle File Found]
@@ -313,8 +310,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     </div>
                 </div>
 
-                {/* Controls Bar */}
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
+                {/* 3. CHANGED: Added px-4 md:px-0 to restore padding for controls on mobile */}
+                <div className="px-4 md:px-0 mt-4 flex flex-wrap items-center justify-between gap-4">
                     <div className="flex items-center gap-2">
                         <button
                             onClick={onPrevVideo}
@@ -337,20 +334,30 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <div className="flex items-center gap-2">
                         {/* Speed Control */}
                         <button
-                            onClick={cyclePlaybackSpeed}
+                            onClick={() => {
+                                const speeds = [0.25, 0.5, 1, 1.25, 1.5, 2];
+                                const nextSpeed = speeds[(speeds.indexOf(playbackSpeed) + 1) % speeds.length];
+                                setPlaybackSpeed(nextSpeed);
+                                if (videoRef.current) videoRef.current.playbackRate = nextSpeed;
+                            }}
                             className="glass-button p-2 rounded-lg text-glass-subtext hover:text-white flex items-center gap-1 min-w-[70px] justify-center"
-                            title="Cycle Playback Speed"
                         >
                             <SpeedIcon />
                             <span className="text-xs font-bold">{playbackSpeed}x</span>
                         </button>
 
-                        {/* Subtitle Toggle */}
                         <button
-                            onClick={toggleSubtitles}
+                            onClick={() => {
+                                const newState = !subtitlesEnabled;
+                                setSubtitlesEnabled(newState);
+                                if (videoRef.current) {
+                                    for (let i = 0; i < videoRef.current.textTracks.length; i++) {
+                                        videoRef.current.textTracks[i].mode = newState ? 'showing' : 'hidden';
+                                    }
+                                }
+                            }}
                             disabled={!hasSubtitles}
                             className={`glass-button p-2 rounded-lg transition-colors ${subtitlesEnabled ? 'text-brand-primary bg-brand-primary/10 border-brand-primary/30' : 'text-glass-subtext hover:text-white'} ${!hasSubtitles ? 'opacity-30' : ''}`}
-                            title={hasSubtitles ? "Toggle Subtitles" : "No subtitles available"}
                         >
                             <CCIcon />
                         </button>
@@ -366,12 +373,10 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
                         <div className="w-px h-6 bg-white/10 mx-1"></div>
 
-                        {/* Thumbnail Button (Toggle Capture/Remove) */}
                         <button
                             onClick={isCustomThumbnail ? removeThumbnail : captureThumbnail}
                             disabled={isProcessingThumb}
                             className={`flex items-center gap-2 glass-button px-3 py-2 rounded-lg text-xs font-medium transition-colors ${isCustomThumbnail ? 'text-red-400 hover:bg-red-500/10 hover:text-red-300' : 'text-glass-subtext hover:text-brand-accent'} ${isProcessingThumb ? 'opacity-50 cursor-wait' : ''}`}
-                            title={isCustomThumbnail ? "Revert to original thumbnail" : "Set current frame as thumbnail"}
                         >
                             {isCustomThumbnail ? <XIcon /> : <CameraIcon />}
                             <span className="hidden sm:inline">
@@ -381,14 +386,13 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     </div>
                 </div>
 
-                {/* Title & Actions */}
-                <div className="mt-4 mb-6">
+                {/* 4. CHANGED: Added px-4 md:px-0 to Title section */}
+                <div className="px-4 md:px-0 mt-4 mb-6">
                     <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white mb-4">{displayName}</h1>
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 pb-6 border-b border-white/5">
                         <div className="flex items-center gap-4">
-                            {/* Channel Avatar */}
-                            {/* Channel Avatar */}
-                            {video.channelAvatar ? (
+                             {/* Channel Avatar */}
+                             {video.channelAvatar ? (
                                 <img
                                     src={video.channelAvatar}
                                     className="w-12 h-12 rounded-full object-cover shadow-lg ring-2 ring-black bg-white/10"
@@ -399,9 +403,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                     {video.channel ? video.channel.charAt(0).toUpperCase() : "L"}
                                 </div>
                             )}
-
                             <div>
-                                {/* USE NFO DATA HERE */}
                                 <h3 className="font-bold text-base text-white">
                                     {video.channel || "Local Drive"}
                                 </h3>
@@ -420,44 +422,33 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                 <span>Favorite</span>
                             </button>
 
-                            {/* NEW: Watch Later Button */}
-                            {/* NEW: Safer Watch Later Button */}
+                            {/* Watch Later */}
                             <button
-                                onClick={() => {
-                                    if (onToggleWatchLater && video?.id) {
-                                        onToggleWatchLater(video.id);
-                                    }
-                                }}
+                                onClick={() => onToggleWatchLater?.(video.id)}
                                 className={`glass-button p-2.5 rounded-full transition-all ${playlists?.find(p => p.name === 'Watch Later')?.videoIds?.includes(video.id)
-                                    ? 'text-brand-primary bg-brand-primary/10 border-brand-primary/30'
-                                    : 'text-glass-subtext hover:text-white'
+                                        ? 'text-brand-primary bg-brand-primary/10 border-brand-primary/30'
+                                        : 'text-glass-subtext hover:text-white'
                                     }`}
-                                title="Watch Later"
                             >
                                 <HistoryIcon />
                             </button>
 
-
-                            {/* 3. Sleek Playlist Button (Icon Only) */}
+                            {/* Playlist Menu */}
                             <div className="relative">
                                 <button
                                     onClick={() => setShowPlaylistMenu(!showPlaylistMenu)}
                                     className="glass-button p-2.5 rounded-full text-glass-subtext hover:text-white transition-all"
-                                    title="Add to Playlist"
                                 >
                                     <PlaylistPlusIcon />
                                 </button>
-
                                 {showPlaylistMenu && (
                                     <>
                                         <div className="fixed inset-0 z-40" onClick={() => setShowPlaylistMenu(false)} />
-                                        <div className="absolute top-full right-0 mt-2 w-52 glass-panel rounded-xl shadow-2xl py-2 z-50 border border-white/10 animate-fade-in">
+                                        <div className="absolute top-full right-0 mt-2 w-52 glass-panel rounded-xl shadow-2xl py-2 z-50 border border-white/10">
                                             <div className="px-4 py-2 text-[10px] font-bold text-glass-subtext uppercase tracking-widest">Select Playlist</div>
                                             <div className="max-h-48 overflow-y-auto">
                                                 {playlists.map(p => {
-                                                    // 2. Check if video is already in this playlist
                                                     const isAlreadyIn = p.videoIds.includes(video.id);
-
                                                     return (
                                                         <div
                                                             key={p.id}
@@ -466,14 +457,10 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                                                 setShowPlaylistMenu(false);
                                                             }}
                                                             className={`px-4 py-2.5 flex items-center justify-between cursor-pointer text-sm font-medium transition-colors border-b border-white/5 last:border-0 
-                                    ${isAlreadyIn ? 'text-brand-primary bg-brand-primary/5 cursor-default' : 'hover:bg-white/10'}`}
+                                                            ${isAlreadyIn ? 'text-brand-primary bg-brand-primary/5 cursor-default' : 'hover:bg-white/10'}`}
                                                         >
                                                             <span className="truncate">{p.name}</span>
-                                                            {isAlreadyIn && (
-                                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                                                </svg>
-                                                            )}
+                                                            {isAlreadyIn && <div className="w-2 h-2 rounded-full bg-brand-primary" />}
                                                         </div>
                                                     );
                                                 })}
@@ -481,7 +468,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                             <div className="mt-1 pt-1 border-t border-white/10">
                                                 <button
                                                     onClick={async () => {
-                                                        // 1. App.tsx will now handle creating and adding the video
                                                         onCreatePlaylist();
                                                         setShowPlaylistMenu(false);
                                                     }}
@@ -495,61 +481,29 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                 )}
                             </div>
 
-                            {/* 5. Smaller YouTube Icon Button (Icon only) */}
-                                <div className="relative">
-                                    {video.youtubeId ? (
-                                        <a
-                                            href={`https://www.youtube.com/watch?v=${video.youtubeId}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="flex items-center justify-center glass-button p-2.5 rounded-full text-brand-primary border-brand-primary/30 bg-brand-primary/10 hover:bg-brand-primary/20 hover:shadow-[0_0_15px_rgba(37,99,235,0.4)] transition-all animate-glow-flow"
-                                            title="Watch on YouTube"
-                                        >
-                                            <YouTubeIcon />
-                                        </a>
-                                    ) : (
-                                        <button
-                                            disabled
-                                            className="flex items-center justify-center glass-button p-2.5 rounded-full opacity-20 cursor-not-allowed grayscale border-white/5 text-glass-subtext"
-                                            title="YouTube link unavailable"
-                                        >
-                                            <YouTubeIcon />
-                                        </button>
-                                    )}
-                                </div>
-
-                            <a
-                                href={video.url}
-                                download={video.name}
-                                className="flex items-center gap-2 glass-button px-5 py-2.5 rounded-full text-sm font-medium hover:text-white hover:bg-white/10 transition-colors"
-                            >
-                                <DownloadIcon />
-                                <span>Save</span>
-                            </a>
-
+                             {/* YouTube Link */}
                             <div className="relative">
-                                {showShareMenu && (
-                                    <>
-                                        <div className="fixed inset-0 z-40" onClick={() => setShowShareMenu(false)} />
-                                        <div className="absolute top-full right-0 mt-2 w-56 glass-panel rounded-xl shadow-xl py-2 z-50 border border-white/10">
-                                            <div className="px-4 py-2 text-xs font-bold text-glass-subtext uppercase">Share</div>
-                                            <button
-                                                onClick={() => { navigator.clipboard.writeText(window.location.href); setShowShareMenu(false); }}
-                                                className="w-full text-left px-4 py-3 hover:bg-white/10 text-sm flex items-center gap-3"
-                                            >
-                                                <LinkIcon />
-                                                <span>Copy Link</span>
-                                            </button>
-                                        </div>
-                                    </>
+                                {video.youtubeId ? (
+                                    <a
+                                        href={`https://www.youtube.com/watch?v=${video.youtubeId}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center justify-center glass-button p-2.5 rounded-full text-brand-primary border-brand-primary/30 bg-brand-primary/10 hover:bg-brand-primary/20 hover:shadow-[0_0_15px_rgba(37,99,235,0.4)] transition-all animate-glow-flow"
+                                    >
+                                        <YouTubeIcon />
+                                    </a>
+                                ) : (
+                                    <button disabled className="flex items-center justify-center glass-button p-2.5 rounded-full opacity-20 cursor-not-allowed grayscale border-white/5 text-glass-subtext">
+                                        <YouTubeIcon />
+                                    </button>
                                 )}
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* Description Box */}
-                <div className="bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl p-4 transition-colors">
+                {/* 5. CHANGED: Added mx-4 md:mx-0 so description box doesn't touch edges on mobile */}
+                <div className="mx-4 md:mx-0 bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl p-4 transition-colors">
                     <div className="flex items-center gap-3 text-sm font-bold mb-3 text-white/90">
                         <span>{views}</span>
                         <span className="text-white/20">•</span>
@@ -570,7 +524,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </div>
             </div>
 
-            <div className="lg:col-span-1">
+            {/* 6. CHANGED: Added px-4 lg:px-0 to Sidebar column */}
+            <div className="lg:col-span-1 px-4 lg:px-0">
                 <h3 className="text-lg font-bold mb-5 text-white/90 border-l-4 border-brand-primary pl-4">Up Next</h3>
                 <div className="flex flex-col gap-4">
                     {relatedVideos.map(related => (
@@ -579,7 +534,9 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                 {related.thumbnail ? (
                                     <img src={related.thumbnail} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-all duration-300 group-hover:scale-105" />
                                 ) : (
-                                    <video src={related.url} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" preload="metadata" />
+                                    <div className="w-full h-full flex items-center justify-center bg-white/5">
+                                        <NextVideoIcon />
+                                    </div>
                                 )}
                                 <div className="absolute bottom-1 right-1 bg-black/70 backdrop-blur-sm px-1.5 py-0.5 rounded text-[10px] font-bold">
                                     {related.durationStr || "VIDEO"}
