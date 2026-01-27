@@ -21,6 +21,7 @@ const App = () => {
     const [isScanning, setIsScanning] = useState(false);
     const [sortOption, setSortOption] = useState<SortOption>(SortOption.AIR_DATE_NEWEST); const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
     const [pagination, setPagination] = useState({ page: 1, hasMore: true, isLoading: false });
+    const [totalCount, setTotalCount] = useState(0);
     const [currentSubFolders, setCurrentSubFolders] = useState<string[]>([]);
     const [isFoldersExpanded, setIsFoldersExpanded] = useState(false);
     const virtuosoRef = useRef<any>(null);
@@ -64,6 +65,7 @@ const App = () => {
 
             if (reset) {
                 setAllVideos(newVideos);
+                setTotalCount(data.pagination.total);
                 setPagination({
                     page: 2, // Next page will be 2
                     hasMore: data.pagination.totalPages > 1,
@@ -491,7 +493,7 @@ const App = () => {
                                             viewState === ViewState.PLAYLIST ? playlists.find(p => p.id === selectedPlaylistId)?.name :
                                                 viewState.toLowerCase()}
                                     </h2>
-                                    <span className="text-sm text-glass-subtext">{displayedVideos.length} videos</span>
+                                    <span className="text-sm text-glass-subtext">{totalCount} videos</span>
                                 </div>
 
                                 <div className="relative">
