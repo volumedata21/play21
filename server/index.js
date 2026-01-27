@@ -90,7 +90,7 @@ db.exec(`
 function parseNfo(nfoPath) {
   try {
     const content = fs.readFileSync(nfoPath, 'utf-8');
-    
+
     const extract = (tag) => {
       const match = content.match(new RegExp(`<${tag}[^>]*>(.*?)</${tag}>`, 's'));
       return match ? match[1].trim() : null;
@@ -99,6 +99,7 @@ function parseNfo(nfoPath) {
     // Simple XML entity decoder (turns &apos; into ' etc)
     const decode = (str) => {
       if (!str) return null;
+      .replace(/<!\[CDATA\[(.*?)\]\]>/gs, '$1') // This strips out the CDATA "wrapper"
       return str
         .replace(/&amp;/g, '&')
         .replace(/&lt;/g, '<')
@@ -143,16 +144,18 @@ function findLocalThumbnail(videoPath) {
 
 // NEW: Recursive search for Channel Avatar (poster/avatar/channel.jpg)
 function findChannelAvatar(startDir) {
-  let currentDir = startDir;
+  // path.resolve makes sure we have the full, "real" address on the disk
+  let currentDir = path.resolve(startDir);
+  const rootDir = path.resolve(mediaDir);
 
   // We loop upwards until we go past the media root
   while (currentDir.startsWith(mediaDir)) {
     try {
       const files = fs.readdirSync(currentDir);
-      
+
       // Look for regex match: poster, avatar, channel (case insensitive) with valid extensions
-      const match = files.find(f => /^(poster|avatar|channel)\.(jpg|jpeg|png|webp)$/i.test(f));
-      
+      const match = files.find(f => /^(poster|avatar|channel|folder)\.(jpg|jpeg|png|webp)$/i.test(f));
+
       if (match) {
         // Found it! Convert full path to web URL
         const fullPath = path.join(currentDir, match);
@@ -183,11 +186,11 @@ function generateThumbnail(videoPath, videoId) {
     ffmpeg(videoPath)
       .on('end', () => resolve(`/thumbnails/${outputFilename}`))
       .on('error', (err) => {
-          console.error(`FFmpeg error for ${videoId}:`, err);
-          resolve(null);
+        console.error(`FFmpeg error for ${videoId}:`, err);
+        resolve(null);
       })
       .screenshots({
-        timestamps: ['10%'], 
+        timestamps: ['10%'],
         filename: outputFilename,
         folder: thumbnailsDir,
         size: '1280x720'
@@ -216,9 +219,9 @@ function formatDuration(seconds) {
 async function processSubtitles(videoPath, videoId) {
   const dir = path.dirname(videoPath);
   const nameNoExt = path.parse(videoPath).name;
-  
+
   const files = fs.readdirSync(dir);
-  const subtitleFiles = files.filter(f => 
+  const subtitleFiles = files.filter(f =>
     f.startsWith(nameNoExt) && (f.endsWith('.srt') || f.endsWith('.vtt'))
   );
 
@@ -228,7 +231,7 @@ async function processSubtitles(videoPath, videoId) {
     const parts = file.split('.');
     let lang = 'en';
     let label = 'English';
-    
+
     if (parts.length > 2) {
       const possibleLang = parts[parts.length - 2];
       if (possibleLang.length === 2) {
@@ -247,13 +250,13 @@ async function processSubtitles(videoPath, videoId) {
         fs.copyFileSync(sourcePath, outputVttPath);
       } else {
         if (!fs.existsSync(outputVttPath)) {
-            await new Promise((resolve, reject) => {
-                ffmpeg(sourcePath)
-                .output(outputVttPath)
-                .on('end', resolve)
-                .on('error', reject)
-                .run();
-            });
+          await new Promise((resolve, reject) => {
+            ffmpeg(sourcePath)
+              .output(outputVttPath)
+              .on('end', resolve)
+              .on('error', reject)
+              .run();
+          });
         }
       }
       processedTracks.push({
@@ -298,17 +301,17 @@ async function scanMedia() {
   try {
     const files = getFilesRecursively(mediaDir);
     const supportedExtensions = ['.mp4', '.webm', '.ogg', '.mov', '.mkv'];
-    
+
     // Filter strictly for video files
-    const validFiles = files.filter(fullPath => 
-        supportedExtensions.includes(path.extname(fullPath).toLowerCase())
+    const validFiles = files.filter(fullPath =>
+      supportedExtensions.includes(path.extname(fullPath).toLowerCase())
     );
 
     console.log(`Found ${validFiles.length} video files.`);
 
     // PREPARE STATEMENTS
     const checkStmt = db.prepare('SELECT id, duration FROM videos WHERE id = ?');
-    
+
     // 1. FAST PASS: Insert files immediately so they appear in the UI
     const insertStmt = db.prepare(`
       INSERT INTO videos (id, name, filename, folder, path, created_at)
@@ -326,94 +329,104 @@ async function scanMedia() {
 
     // --- PHASE 1: INSTANT INSERT ---
     for (const fullPath of validFiles) {
-        const relativePath = path.relative(mediaDir, fullPath);
-        // Create ID from path
-        const id = `vid-${relativePath.replace(/[^a-zA-Z0-9]/g, '_')}`;
-        
-        const existing = checkStmt.get(id);
-        if (!existing) {
-            const folderName = path.dirname(relativePath) === '.' ? 'Local Library' : path.dirname(relativePath);
-            const webPath = '/media/' + relativePath.split(path.sep).map(encodeURIComponent).join('/');
-            const stats = fs.statSync(fullPath);
-            
-            // Insert with bare minimum data
-            insertStmt.run(
-                id, 
-                path.basename(fullPath, path.extname(fullPath)), // Display Name
-                path.basename(fullPath), // Filename
-                folderName, 
-                webPath, 
-                Math.floor(stats.birthtimeMs)
-            );
-        }
+      const relativePath = path.relative(mediaDir, fullPath);
+      // Create ID from path
+      const id = `vid-${relativePath.replace(/[^a-zA-Z0-9]/g, '_')}`;
+
+      const existing = checkStmt.get(id);
+      if (!existing) {
+        const folderName = path.dirname(relativePath) === '.' ? 'Local Library' : path.dirname(relativePath);
+        const webPath = '/media/' + relativePath.split(path.sep).map(encodeURIComponent).join('/');
+        const stats = fs.statSync(fullPath);
+
+        // Insert with bare minimum data
+        insertStmt.run(
+          id,
+          path.basename(fullPath, path.extname(fullPath)), // Display Name
+          path.basename(fullPath), // Filename
+          folderName,
+          webPath,
+          Math.floor(stats.birthtimeMs)
+        );
+      }
     }
     console.log("Phase 1 complete: Videos are visible in UI.");
 
     // --- PHASE 2: DEEP SCAN (Duration, Thumbs, NFO) ---
     for (const fullPath of validFiles) {
-        const relativePath = path.relative(mediaDir, fullPath);
-        const id = `vid-${relativePath.replace(/[^a-zA-Z0-9]/g, '_')}`;
-        
-        // Skip if we already have a duration (means we likely scanned it before)
-        const existing = checkStmt.get(id);
-        if (existing && existing.duration) continue;
+      const relativePath = path.relative(mediaDir, fullPath);
+      const id = `vid-${relativePath.replace(/[^a-zA-Z0-9]/g, '_')}`;
 
-        try {
-            // A. THUMBNAIL
-            let thumbUrl = null;
-            const existingThumb = db.prepare('SELECT thumbnail FROM videos WHERE id = ?').get(id);
-            
-            if (existingThumb && existingThumb.thumbnail) {
-                thumbUrl = existingThumb.thumbnail;
-            } else {
-                const localThumb = findLocalThumbnail(fullPath);
-                if (localThumb) {
-                    thumbUrl = '/media/' + path.relative(mediaDir, localThumb).split(path.sep).map(encodeURIComponent).join('/');
-                } else {
-                    // Generate
-                    thumbUrl = await generateThumbnail(fullPath, id);
-                }
-            }
+      // Skip if we already have a duration (means we likely scanned it before)
+      const existing = checkStmt.get(id);
+      if (existing && existing.duration) continue;
 
-            // B. DURATION
-            const duration = await getVideoDuration(fullPath);
+      try {
+        // A. THUMBNAIL
+        let thumbUrl = null;
+        const existingThumb = db.prepare('SELECT thumbnail FROM videos WHERE id = ?').get(id);
 
-            // C. SUBTITLES
-            const subtitlesJson = await processSubtitles(fullPath, id);
-
-            // D. NFO METADATA
-            const nfoPath = fullPath.replace(/\.[^/.]+$/, ".nfo");
-            let meta = { plot: null, channel: null, genre: null, aired: null };
-            if (fs.existsSync(nfoPath)) {
-                const parsed = parseNfo(nfoPath);
-                if (parsed) meta = parsed;
-            }
-            
-            // E. CHANNEL AVATAR
-            const channelAvatarUrl = findChannelAvatar(path.dirname(fullPath));
-
-            // UPDATE RECORD
-            updateMetaStmt.run(
-                Math.floor(duration), 
-                thumbUrl, 
-                subtitlesJson, 
-                meta.plot, 
-                meta.channel || "Local Library", 
-                meta.genre, 
-                meta.aired, 
-                channelAvatarUrl,
-                id
-            );
-            
-        } catch (e) {
-            console.error(`Failed to process metadata for ${id}`, e);
+        if (existingThumb && existingThumb.thumbnail) {
+          thumbUrl = existingThumb.thumbnail;
+        } else {
+          const localThumb = findLocalThumbnail(fullPath);
+          if (localThumb) {
+            thumbUrl = '/media/' + path.relative(mediaDir, localThumb).split(path.sep).map(encodeURIComponent).join('/');
+          } else {
+            // Generate
+            thumbUrl = await generateThumbnail(fullPath, id);
+          }
         }
+
+        // B. DURATION
+        const duration = await getVideoDuration(fullPath);
+
+        // C. SUBTITLES
+        const subtitlesJson = await processSubtitles(fullPath, id);
+
+        // D. NFO METADATA
+        const dir = path.dirname(fullPath);
+        const baseName = path.parse(fullPath).name;
+        const filesInDir = fs.readdirSync(dir);
+
+        // This looks through the folder and finds a file that matches 
+        // the name regardless of BIG or small letters
+        const actualNfoFile = filesInDir.find(f =>
+          f.toLowerCase() === `${baseName.toLowerCase()}.nfo`
+        );
+
+        const nfoPath = actualNfoFile ? path.join(dir, actualNfoFile) : null;
+        let meta = { plot: null, channel: null, genre: null, aired: null };
+        if (fs.existsSync(nfoPath)) {
+          const parsed = parseNfo(nfoPath);
+          if (parsed) meta = parsed;
+        }
+
+        // E. CHANNEL AVATAR
+        const channelAvatarUrl = findChannelAvatar(path.dirname(fullPath));
+
+        // UPDATE RECORD
+        updateMetaStmt.run(
+          Math.floor(duration),
+          thumbUrl,
+          subtitlesJson,
+          meta.plot,
+          meta.channel || "Local Library",
+          meta.genre,
+          meta.aired,
+          channelAvatarUrl,
+          id
+        );
+
+      } catch (e) {
+        console.error(`Failed to process metadata for ${id}`, e);
+      }
     }
     console.log(`Deep scan complete.`);
   } catch (e) {
-      console.error("Scan failed:", e);
+    console.error("Scan failed:", e);
   } finally {
-      isScanning = false;
+    isScanning = false;
   }
 }
 
@@ -423,7 +436,7 @@ async function scanMedia() {
 app.use(express.json({ limit: '50mb' }));
 
 app.use(cors({
-  origin: '*', 
+  origin: '*',
   methods: ['GET', 'POST', 'DELETE', 'UPDATE', 'PUT', 'PATCH'],
 }));
 
@@ -446,253 +459,253 @@ app.get('/api/videos', (req, res) => {
 
   // Filter Logic
   if (folder) {
-      query += ' WHERE folder = ? OR folder LIKE ?';
-      countQuery += ' WHERE folder = ? OR folder LIKE ?';
-      params = [folder, `${folder}/%`];
+    query += ' WHERE folder = ? OR folder LIKE ?';
+    countQuery += ' WHERE folder = ? OR folder LIKE ?';
+    params = [folder, `${folder}/%`];
   }
 
   query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-  
+
   try {
-      const totalObj = db.prepare(countQuery).get(...params);
-      const total = totalObj ? totalObj.total : 0;
-      
-      const videos = db.prepare(query).all(...params, limit, offset);
+    const totalObj = db.prepare(countQuery).get(...params);
+    const total = totalObj ? totalObj.total : 0;
 
-      const formatted = videos.map(v => ({
-        ...v,
-        isFavorite: Boolean(v.is_favorite),
-        viewsCount: v.views,
-        views: `${v.views} views`,
-        timeAgo: v.release_date 
-            ? new Date(v.release_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }) 
-            : new Date(v.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-        thumbnail: v.thumbnail || null,
-        durationStr: formatDuration(v.duration), 
-        duration: v.duration,
-        playbackPosition: v.playback_position || 0,
-        channelAvatar: v.channel_avatar
-      }));
+    const videos = db.prepare(query).all(...params, limit, offset);
 
-      res.json({
-          videos: formatted,
-          pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
-      });
+    const formatted = videos.map(v => ({
+      ...v,
+      isFavorite: Boolean(v.is_favorite),
+      viewsCount: v.views,
+      views: `${v.views} views`,
+      timeAgo: v.release_date
+        ? new Date(v.release_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })
+        : new Date(v.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+      thumbnail: v.thumbnail || null,
+      durationStr: formatDuration(v.duration),
+      duration: v.duration,
+      playbackPosition: v.playback_position || 0,
+      channelAvatar: v.channel_avatar
+    }));
+
+    res.json({
+      videos: formatted,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+    });
   } catch (e) {
-      console.error(e);
-      res.status(500).json({ error: "Database error" });
+    console.error(e);
+    res.status(500).json({ error: "Database error" });
   }
 });
 
 // --- STREAMING ROUTE ---
 app.get('/api/stream/:id', (req, res) => {
-    const video = db.prepare('SELECT path FROM videos WHERE id = ?').get(req.params.id);
-    if (!video) return res.status(404).send('Not found');
+  const video = db.prepare('SELECT path FROM videos WHERE id = ?').get(req.params.id);
+  if (!video) return res.status(404).send('Not found');
 
-    // Convert web path back to file system path
-    let fullPath = video.path;
-    if (video.path.startsWith('/media')) {
-         const relPath = decodeURIComponent(video.path.replace(/^\/media\//, ''));
-         fullPath = path.join(mediaDir, relPath);
+  // Convert web path back to file system path
+  let fullPath = video.path;
+  if (video.path.startsWith('/media')) {
+    const relPath = decodeURIComponent(video.path.replace(/^\/media\//, ''));
+    fullPath = path.join(mediaDir, relPath);
+  }
+
+  // --- FIX: Check if file exists inside the route ---
+  if (!fs.existsSync(fullPath)) {
+    console.log(`File missing: ${fullPath}. Removing from DB.`);
+    try {
+      db.prepare('DELETE FROM videos WHERE id = ?').run(req.params.id);
+    } catch (e) {
+      console.error("Failed to remove ghost file from DB", e);
     }
+    return res.status(404).send('File not found on disk');
+  }
 
-    // --- FIX: Check if file exists inside the route ---
-    if (!fs.existsSync(fullPath)) {
-        console.log(`File missing: ${fullPath}. Removing from DB.`);
-        try {
-            db.prepare('DELETE FROM videos WHERE id = ?').run(req.params.id);
-        } catch (e) {
-            console.error("Failed to remove ghost file from DB", e);
-        }
-        return res.status(404).send('File not found on disk');
-    }
-
-    // This handles the "Range" header automatically
-    res.sendFile(fullPath); 
+  // This handles the "Range" header automatically
+  res.sendFile(fullPath);
 });
 
 app.post('/api/scan', async (req, res) => {
   console.log("Manual scan triggered...");
-  await scanMedia(); 
+  await scanMedia();
   res.json({ success: true, message: "Scan complete" });
 });
 
 // NEW: Toggle Favorite (Persist to DB)
 app.post('/api/videos/:id/favorite', (req, res) => {
-    const { id } = req.params;
-    const { isFavorite } = req.body;
-    db.prepare('UPDATE videos SET is_favorite = ? WHERE id = ?').run(isFavorite ? 1 : 0, id);
-    res.json({ success: true });
+  const { id } = req.params;
+  const { isFavorite } = req.body;
+  db.prepare('UPDATE videos SET is_favorite = ? WHERE id = ?').run(isFavorite ? 1 : 0, id);
+  res.json({ success: true });
 });
 
 // Increment View Count
 app.post('/api/videos/:id/view', (req, res) => {
-    const { id } = req.params;
-    try {
-        db.prepare('UPDATE videos SET views = views + 1 WHERE id = ?').run(id);
-        res.json({ success: true });
-    } catch (e) {
-        console.error("Failed to increment view", e);
-        res.status(500).json({ error: "Failed to update views" });
-    }
+  const { id } = req.params;
+  try {
+    db.prepare('UPDATE videos SET views = views + 1 WHERE id = ?').run(id);
+    res.json({ success: true });
+  } catch (e) {
+    console.error("Failed to increment view", e);
+    res.status(500).json({ error: "Failed to update views" });
+  }
 });
 
 // NEW: Save Playback Progress
 app.post('/api/videos/:id/progress', (req, res) => {
-    const { id } = req.params;
-    const { time } = req.body;
-    try {
-        db.prepare('UPDATE videos SET playback_position = ? WHERE id = ?').run(Math.floor(time), id);
-        res.json({ success: true });
-    } catch (e) {
-        console.error("Failed to save progress", e);
-        res.status(500).json({ error: "Failed to save progress" });
-    }
+  const { id } = req.params;
+  const { time } = req.body;
+  try {
+    db.prepare('UPDATE videos SET playback_position = ? WHERE id = ?').run(Math.floor(time), id);
+    res.json({ success: true });
+  } catch (e) {
+    console.error("Failed to save progress", e);
+    res.status(500).json({ error: "Failed to save progress" });
+  }
 });
 
 // --- THUMBNAILS (Custom Save/Remove) ---
 app.post('/api/videos/:id/thumbnail', (req, res) => {
-    const { id } = req.params;
-    const { image } = req.body;
+  const { id } = req.params;
+  const { image } = req.body;
 
-    if (!image) return res.status(400).json({ error: "No image data" });
+  if (!image) return res.status(400).json({ error: "No image data" });
 
-    try {
-        const base64Data = image.replace(/^data:image\/\w+;base64,/, "");
-        const buffer = Buffer.from(base64Data, 'base64');
-        const filename = `${id}-custom.jpg`;
-        const filepath = path.join(thumbnailsDir, filename);
-        fs.writeFileSync(filepath, buffer);
+  try {
+    const base64Data = image.replace(/^data:image\/\w+;base64,/, "");
+    const buffer = Buffer.from(base64Data, 'base64');
+    const filename = `${id}-custom.jpg`;
+    const filepath = path.join(thumbnailsDir, filename);
+    fs.writeFileSync(filepath, buffer);
 
-        const webPath = `/thumbnails/${filename}`;
-        db.prepare('UPDATE videos SET thumbnail = ? WHERE id = ?').run(webPath, id);
+    const webPath = `/thumbnails/${filename}`;
+    db.prepare('UPDATE videos SET thumbnail = ? WHERE id = ?').run(webPath, id);
 
-        res.json({ success: true, thumbnail: webPath });
-    } catch (e) {
-        console.error("Failed to save thumbnail", e);
-        res.status(500).json({ error: "Failed to save" });
-    }
+    res.json({ success: true, thumbnail: webPath });
+  } catch (e) {
+    console.error("Failed to save thumbnail", e);
+    res.status(500).json({ error: "Failed to save" });
+  }
 });
 
 app.delete('/api/videos/:id/thumbnail', async (req, res) => {
-    const { id } = req.params;
-    try {
-        const customPath = path.join(thumbnailsDir, `${id}-custom.jpg`);
-        if (fs.existsSync(customPath)) fs.unlinkSync(customPath);
+  const { id } = req.params;
+  try {
+    const customPath = path.join(thumbnailsDir, `${id}-custom.jpg`);
+    if (fs.existsSync(customPath)) fs.unlinkSync(customPath);
 
-        const video = db.prepare('SELECT path FROM videos WHERE id = ?').get(id);
-        if (!video) return res.status(404).json({ error: "Video not found" });
+    const video = db.prepare('SELECT path FROM videos WHERE id = ?').get(id);
+    if (!video) return res.status(404).json({ error: "Video not found" });
 
-        const relPath = decodeURIComponent(video.path.replace(/^\/media\//, ''));
-        const fullPath = path.join(mediaDir, relPath);
+    const relPath = decodeURIComponent(video.path.replace(/^\/media\//, ''));
+    const fullPath = path.join(mediaDir, relPath);
 
-        let newThumbUrl = null;
-        const localThumbPath = findLocalThumbnail(fullPath);
-        if (localThumbPath) {
-             const relativeThumb = path.relative(mediaDir, localThumbPath);
-             newThumbUrl = '/media/' + relativeThumb.split(path.sep).map(encodeURIComponent).join('/');
-        } else {
-             newThumbUrl = await generateThumbnail(fullPath, id);
-        }
-
-        db.prepare('UPDATE videos SET thumbnail = ? WHERE id = ?').run(newThumbUrl, id);
-        res.json({ success: true, thumbnail: newThumbUrl });
-
-    } catch (e) {
-        console.error("Failed to remove thumbnail", e);
-        res.status(500).json({ error: "Failed to remove" });
+    let newThumbUrl = null;
+    const localThumbPath = findLocalThumbnail(fullPath);
+    if (localThumbPath) {
+      const relativeThumb = path.relative(mediaDir, localThumbPath);
+      newThumbUrl = '/media/' + relativeThumb.split(path.sep).map(encodeURIComponent).join('/');
+    } else {
+      newThumbUrl = await generateThumbnail(fullPath, id);
     }
+
+    db.prepare('UPDATE videos SET thumbnail = ? WHERE id = ?').run(newThumbUrl, id);
+    res.json({ success: true, thumbnail: newThumbUrl });
+
+  } catch (e) {
+    console.error("Failed to remove thumbnail", e);
+    res.status(500).json({ error: "Failed to remove" });
+  }
 });
 
 // --- HISTORY (NEW) ---
 app.get('/api/history', (req, res) => {
-    const history = db.prepare('SELECT video_id FROM history ORDER BY watched_at DESC').all();
-    res.json({ history: history.map(h => h.video_id) });
+  const history = db.prepare('SELECT video_id FROM history ORDER BY watched_at DESC').all();
+  res.json({ history: history.map(h => h.video_id) });
 });
 
 app.post('/api/history', (req, res) => {
-    const { videoId } = req.body;
-    db.prepare(`
+  const { videoId } = req.body;
+  db.prepare(`
         INSERT INTO history (video_id, watched_at) VALUES (?, ?)
         ON CONFLICT(video_id) DO UPDATE SET watched_at = excluded.watched_at
     `).run(videoId, Date.now());
-    res.json({ success: true });
+  res.json({ success: true });
 });
 
 // --- PLAYLISTS (NEW) ---
 app.get('/api/playlists', (req, res) => {
-    const playlists = db.prepare('SELECT * FROM playlists ORDER BY created_at DESC').all();
-    const result = playlists.map(p => {
-        const videos = db.prepare('SELECT video_id FROM playlist_videos WHERE playlist_id = ? ORDER BY added_at ASC').all(p.id);
-        return {
-            id: p.id,
-            name: p.name,
-            videoIds: videos.map(v => v.video_id)
-        };
-    });
-    res.json({ playlists: result });
+  const playlists = db.prepare('SELECT * FROM playlists ORDER BY created_at DESC').all();
+  const result = playlists.map(p => {
+    const videos = db.prepare('SELECT video_id FROM playlist_videos WHERE playlist_id = ? ORDER BY added_at ASC').all(p.id);
+    return {
+      id: p.id,
+      name: p.name,
+      videoIds: videos.map(v => v.video_id)
+    };
+  });
+  res.json({ playlists: result });
 });
 
 app.post('/api/playlists', (req, res) => {
-    const { name } = req.body;
-    const id = `pl-${Date.now()}`;
-    db.prepare('INSERT INTO playlists (id, name, created_at) VALUES (?, ?, ?)').run(id, name, Date.now());
-    res.json({ success: true, playlist: { id, name, videoIds: [] } });
+  const { name } = req.body;
+  const id = `pl-${Date.now()}`;
+  db.prepare('INSERT INTO playlists (id, name, created_at) VALUES (?, ?, ?)').run(id, name, Date.now());
+  res.json({ success: true, playlist: { id, name, videoIds: [] } });
 });
 
 app.post('/api/playlists/:id/videos', (req, res) => {
-    const { id } = req.params;
-    const { videoId } = req.body;
-    try {
-        db.prepare('INSERT INTO playlist_videos (playlist_id, video_id, added_at) VALUES (?, ?, ?)').run(id, videoId, Date.now());
-        res.json({ success: true });
-    } catch (e) {
-        // Ignore duplicate inserts
-        res.json({ success: true }); 
-    }
+  const { id } = req.params;
+  const { videoId } = req.body;
+  try {
+    db.prepare('INSERT INTO playlist_videos (playlist_id, video_id, added_at) VALUES (?, ?, ?)').run(id, videoId, Date.now());
+    res.json({ success: true });
+  } catch (e) {
+    // Ignore duplicate inserts
+    res.json({ success: true });
+  }
 });
 
 // --- NEW: FOLDERS ENDPOINT ---
 // --- FOLDERS ENDPOINT (Recursive) ---
 app.get('/api/folders', (req, res) => {
-    const parent = req.query.parent; 
+  const parent = req.query.parent;
 
-    try {
-        // If parent is provided, look for direct children: "Movies/Action" -> "Action"
-        // If no parent, look for roots: "Movies"
-        let query = 'SELECT DISTINCT folder FROM videos';
-        let params = [];
-        
-        if (parent) {
-            query += ' WHERE folder LIKE ?';
-            params = [`${parent}/%`];
-        }
+  try {
+    // If parent is provided, look for direct children: "Movies/Action" -> "Action"
+    // If no parent, look for roots: "Movies"
+    let query = 'SELECT DISTINCT folder FROM videos';
+    let params = [];
 
-        const allFolders = db.prepare(query).all(...params);
-        
-        const results = new Set();
-        allFolders.forEach(row => {
-            if (!row.folder) return;
-            
-            // LOGIC:
-            // If we are in "Movies", and we find "Movies/Action/90s", 
-            // we only want to show "Action", not "Action/90s".
-            let relevantPart = row.folder;
-            if (parent) {
-                // Strip the parent prefix ("Movies/")
-                relevantPart = relevantPart.substring(parent.length + 1);
-            }
-            
-            // Take the first segment
-            const root = relevantPart.split(/[/\\]/)[0];
-            if (root) results.add(root);
-        });
-
-        res.json({ folders: Array.from(results).sort() });
-    } catch (e) {
-        console.error("Folder fetch failed", e);
-        res.status(500).json({ error: "Failed to fetch folders" });
+    if (parent) {
+      query += ' WHERE folder LIKE ?';
+      params = [`${parent}/%`];
     }
+
+    const allFolders = db.prepare(query).all(...params);
+
+    const results = new Set();
+    allFolders.forEach(row => {
+      if (!row.folder) return;
+
+      // LOGIC:
+      // If we are in "Movies", and we find "Movies/Action/90s", 
+      // we only want to show "Action", not "Action/90s".
+      let relevantPart = row.folder;
+      if (parent) {
+        // Strip the parent prefix ("Movies/")
+        relevantPart = relevantPart.substring(parent.length + 1);
+      }
+
+      // Take the first segment
+      const root = relevantPart.split(/[/\\]/)[0];
+      if (root) results.add(root);
+    });
+
+    res.json({ folders: Array.from(results).sort() });
+  } catch (e) {
+    console.error("Folder fetch failed", e);
+    res.status(500).json({ error: "Failed to fetch folders" });
+  }
 });
 
 // Run scan on startup
@@ -700,10 +713,10 @@ scanMedia();
 
 const distPath = path.join(process.cwd(), 'dist');
 if (fs.existsSync(distPath)) {
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-        res.sendFile(path.join(distPath, 'index.html'));
-    });
+  app.use(express.static(distPath));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
 }
 
 app.listen(PORT, '0.0.0.0', () => {
