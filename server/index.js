@@ -430,6 +430,7 @@ async function scanMedia() {
           meta.aired,
           channelAvatarUrl,
           meta.title || path.basename(fullPath, path.extname(fullPath)),
+          meta.youtubeId || null,
           id
         );
 

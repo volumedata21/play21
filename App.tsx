@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { BrowserRouter, Routes, Route, useNavigate, useLocation, useSearchParams, useParams } from 'react-router-dom';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import VideoCard, { RecommendationRow } from './components/VideoCard';
@@ -9,7 +10,10 @@ import { getMockData } from './services/mockData';
 import { VideoFile, FolderStructure, ViewState, Playlist, SortOption } from './types';
 import { VirtuosoGrid } from 'react-virtuoso';
 
-const App = () => {
+const AppContent = () => {
+    const navigate = useNavigate();
+    const location = useLocation();
+    const [searchParams] = useSearchParams();
     const [viewState, setViewState] = useState<ViewState>(ViewState.HOME);
     const [allVideos, setAllVideos] = useState<VideoFile[]>([]);
     const [folderStructure, setFolderStructure] = useState<FolderStructure>({});
@@ -215,33 +219,46 @@ const App = () => {
         }
     }, [selectedFolder, searchTerm]);
 
-// --- HANDLE BROWSER BACK BUTTON ---
-useEffect(() => {
-    if (!window.history.state) {
-        window.history.replaceState({ view: ViewState.HOME, folder: null, videoId: null }, '');
-    }
-
-    const onPopState = (event: PopStateEvent) => {
-        const state = event.state;
-        if (!state) return;
-
-        setViewState(state.view || ViewState.HOME);
-        setSelectedFolder(state.folder || null);
-        setSelectedPlaylistId(state.playlistId || null);
-
-        if (state.videoId) {
-            const vid = allVideos.find(v => v.id === state.videoId);
-            if (vid) setCurrentVideo(vid);
-        } else {
+// --- ROUTER SYNC LOGIC ---
+    // This effect runs whenever the URL changes (Back button, Refresh, or Link click)
+    useEffect(() => {
+        const path = location.pathname;
+        const queryFolder = searchParams.get('folder');
+        const queryPlaylist = searchParams.get('playlist');
+        
+        // 1. WATCH PAGE
+        if (path.startsWith('/watch/')) {
+            const videoId = path.split('/')[2];
+            // If we are already watching this video, don't do anything
+            if (currentVideo?.id !== videoId) {
+                const vid = allVideos.find(v => v.id === videoId);
+                if (vid) {
+                    setCurrentVideo(vid);
+                    setViewState(ViewState.WATCH);
+                    setIsSidebarOpen(false);
+                }
+            }
+        } 
+        // 2. PLAYLIST PAGE
+        else if (path.startsWith('/playlist/')) {
+            const playlistId = path.split('/')[2];
+            setSelectedPlaylistId(playlistId);
+            setViewState(ViewState.PLAYLIST);
             setCurrentVideo(null);
-            // Re-open sidebar on desktop when returning from watch view
-            if (window.innerWidth >= 768) setIsSidebarOpen(true);
         }
-    };
-
-    window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
-}, [allVideos]);
+        // 3. HOME / FOLDER PAGE
+        else {
+            setViewState(ViewState.HOME);
+            setCurrentVideo(null);
+            
+            // Handle Folder Logic
+            if (queryFolder) {
+                setSelectedFolder(queryFolder);
+            } else {
+                setSelectedFolder(null);
+            }
+        }
+    }, [location.pathname, searchParams, allVideos]);
 
 const handleScanLibrary = async () => {
     setIsScanning(true);
@@ -342,50 +359,38 @@ const { displayedVideos, canGoUp } = useMemo(() => {
 // --- NEW NAVIGATION HANDLERS ---
 
 const handleEnterFolder = (subFolderName: string) => {
-    const newPath = `${selectedFolder}/${subFolderName}`;
-
-    // PUSH HISTORY
-    window.history.pushState({ view: ViewState.HOME, folder: newPath }, '');
-
-    setSelectedFolder(newPath);
-};
+        const newPath = `${selectedFolder ? selectedFolder + '/' : ''}${subFolderName}`;
+        // Navigate to the same page but with a new query parameter
+        navigate(`/?folder=${encodeURIComponent(newPath)}`);
+    };
 
 const handleGoUp = () => {
-    if (!selectedFolder) return;
-    const parent = selectedFolder.split('/').slice(0, -1).join('/');
-    const newFolder = parent || null; // If empty string, make it null (Root)
-
-    // PUSH HISTORY
-    window.history.pushState({ view: ViewState.HOME, folder: newFolder }, '');
-
-    setSelectedFolder(newFolder);
-};
+        if (!selectedFolder) return;
+        const parent = selectedFolder.split('/').slice(0, -1).join('/');
+        
+        if (parent) {
+            navigate(`/?folder=${encodeURIComponent(parent)}`);
+        } else {
+            navigate('/');
+        }
+    };
 
 const handleVideoSelect = (video: VideoFile) => {
-    setHistory(prev => {
-        const newHistory = prev.filter(id => id !== video.id);
-        return [...newHistory, video.id];
-    });
+        // 1. Update History Database
+        setHistory(prev => {
+            const newHistory = prev.filter(id => id !== video.id);
+            return [...newHistory, video.id];
+        });
 
-    // Tell server to save history
-    fetch('/api/history', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoId: video.id })
-    });
+        fetch('/api/history', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ videoId: video.id })
+        });
 
-    // Browser history state
-    window.history.pushState({
-        view: ViewState.WATCH,
-        videoId: video.id,
-        folder: selectedFolder
-    }, '');
-
-    setCurrentVideo(video);
-    setViewState(ViewState.WATCH);
-    setIsSidebarOpen(false);
-};
-
+        // 2. Navigate to the Watch URL
+        navigate(`/watch/${video.id}`);
+    };
 
 
 const toggleSelection = (id: string) => {
@@ -548,12 +553,9 @@ const handleToggleWatchLater = async (videoId: string) => {
 };
 
 const handleGoHome = () => {
-    window.history.pushState({ view: ViewState.HOME, folder: null }, '');
-    setViewState(ViewState.HOME);
-    setCurrentVideo(null);
-    setSelectedFolder(null);
-    setSearchTerm('');
-};
+        setSearchTerm('');
+        navigate('/');
+    };
 const relatedVideos = useMemo(() => {
     if (!currentVideo) return [];
 
@@ -563,24 +565,26 @@ const relatedVideos = useMemo(() => {
 }, [currentVideo, allVideos]);
 
 // --- SIDEBAR WRAPPERS ---
-const handleSidebarViewChange = (newView: ViewState) => {
-    window.history.pushState({ view: newView, folder: null }, '');
-    setViewState(newView);
-    if (newView === ViewState.HOME) setSelectedFolder(null);
-};
+    // Removed duplicate handleSidebarViewChange
 
-const handleSidebarFolderSelect = (folder: string | null) => {
-    window.history.pushState({ view: ViewState.HOME, folder: folder }, '');
-    setViewState(ViewState.HOME);
-    setSelectedFolder(folder);
-};
+    const handleSidebarViewChange = (newView: ViewState) => {
+        setViewState(newView);
+        navigate('/'); 
+    };
 
-const handleSidebarPlaylistSelect = (id: string) => {
-    window.history.pushState({ view: ViewState.PLAYLIST, playlistId: id }, '');
-    setViewState(ViewState.PLAYLIST);
-    setSelectedPlaylistId(id);
-    if (window.innerWidth < 768) setIsSidebarOpen(false);
-};
+    const handleSidebarFolderSelect = (folder: string | null) => {
+        if (folder) {
+            navigate(`/?folder=${encodeURIComponent(folder)}`);
+        } else {
+            navigate('/');
+        }
+    };
+
+    const handleSidebarPlaylistSelect = (id: string) => {
+        navigate(`/playlist/${id}`);
+    };
+
+    // Removed the problematic legacy pushState handlers here
 
 return (
     <div className="h-screen w-full text-glass-text font-sans selection:bg-brand-primary selection:text-white overflow-hidden">
@@ -835,6 +839,14 @@ return (
         </div>
     </div>
 );
+};
+
+const App = () => {
+    return (
+        <BrowserRouter>
+            <AppContent />
+        </BrowserRouter>
+    );
 };
 
 export default App;
