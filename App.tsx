@@ -219,18 +219,19 @@ const AppContent = () => {
     }, [selectedFolder, searchTerm]);
 
 // --- ROUTER SYNC LOGIC ---
-    // This effect runs whenever the URL changes (Back button, Refresh, or Link click)
     useEffect(() => {
         const path = location.pathname;
         const queryFolder = searchParams.get('folder');
-        const queryPlaylist = searchParams.get('playlist');
         
         // 1. WATCH PAGE
         if (path.startsWith('/watch/')) {
             const videoId = path.split('/')[2];
             // If we are already watching this video, don't do anything
             if (currentVideo?.id !== videoId) {
-                const vid = allVideos.find(v => v.id === videoId);
+                // FIX: Look in 'allVideos' AND 'recommendedVideos'
+                const vid = allVideos.find(v => v.id === videoId) || 
+                            recommendedVideos.find(v => v.id === videoId);
+                            
                 if (vid) {
                     setCurrentVideo(vid);
                     setViewState(ViewState.WATCH);
@@ -257,7 +258,8 @@ const AppContent = () => {
                 setSelectedFolder(null);
             }
         }
-    }, [location.pathname, searchParams, allVideos]);
+        // FIX: Add 'recommendedVideos' to the dependency array so it re-runs when they load
+    }, [location.pathname, searchParams, allVideos, recommendedVideos]);
 
 const handleScanLibrary = async () => {
     setIsScanning(true);
