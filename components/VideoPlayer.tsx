@@ -101,6 +101,72 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
     }, [video.id, video.url]);
 
+    // --- KEYBOARD SHORTCUTS ---
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // 1. Ignore if user is typing in a search box or text area
+            const tag = (document.activeElement?.tagName || '').toUpperCase();
+            if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+            if (!videoRef.current) return;
+            const vid = videoRef.current;
+
+            switch (e.key.toLowerCase()) {
+                case ' ':
+                case 'k':
+                    e.preventDefault(); // Prevent scrolling down
+                    vid.paused ? vid.play() : vid.pause();
+                    break;
+                
+                case 'f':
+                    e.preventDefault();
+                    if (document.fullscreenElement) {
+                        document.exitFullscreen();
+                    } else {
+                        // Try to fullscreen the container for a better UI experience, 
+                        // falling back to just the video element if container not found.
+                        vid.parentElement?.requestFullscreen() || vid.requestFullscreen();
+                    }
+                    break;
+
+                case 'arrowright':
+                case 'l': // YouTube style forward
+                    e.preventDefault();
+                    vid.currentTime = Math.min(vid.duration, vid.currentTime + 10);
+                    break;
+
+                case 'arrowleft':
+                case 'j': // YouTube style back
+                    e.preventDefault();
+                    vid.currentTime = Math.max(0, vid.currentTime - 10);
+                    break;
+
+                case 'arrowup':
+                    e.preventDefault();
+                    vid.volume = Math.min(1, vid.volume + 0.1);
+                    break;
+
+                case 'arrowdown':
+                    e.preventDefault();
+                    vid.volume = Math.max(0, vid.volume - 0.1);
+                    break;
+
+                case 'm':
+                    e.preventDefault();
+                    vid.muted = !vid.muted;
+                    break;
+                
+                case 'home':
+                    e.preventDefault();
+                    vid.currentTime = 0;
+                    break;
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
+
     // Increment view count on mount
     useEffect(() => {
         // We fire-and-forget this request. We don't need to wait for the result.
