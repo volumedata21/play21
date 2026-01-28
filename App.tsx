@@ -147,6 +147,13 @@ const App = () => {
     }, []);
 
     useEffect(() => {
+        if (viewState === ViewState.WATCH && mainScrollRef) {
+            // Use 'auto' for instant snap, preventing the 'jumpy' feeling
+            mainScrollRef.scrollTo({ top: 0, behavior: 'auto' });
+        }
+    }, [currentVideo, viewState, mainScrollRef]);
+
+    useEffect(() => {
         // When the user changes the sort, clear the list and start from page 1
         fetchVideos(1, selectedFolder, true);
     }, [sortOption]);
@@ -359,20 +366,19 @@ const App = () => {
     };
 
     const handleVideoSelect = (video: VideoFile) => {
-        // Update the list in the browser so it feels fast
         setHistory(prev => {
             const newHistory = prev.filter(id => id !== video.id);
             return [...newHistory, video.id];
         });
 
-        // NEW: Tell the server to save this to the SQLite history table
+        // Tell server to save history
         fetch('/api/history', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ videoId: video.id })
         });
 
-        // Simple history push for the browser back button
+        // Browser history state
         window.history.pushState({
             view: ViewState.WATCH,
             videoId: video.id,
