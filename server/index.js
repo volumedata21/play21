@@ -498,11 +498,17 @@ app.get('/api/videos', (req, res) => {
     params.push(folder, `${folder}/%`);
   }
 
-  // NEW: Search Logic
+  // NEW: Search Logic (Tokenized)
   if (search) {
-    // We search the name, channel, or description
-    conditions.push('(name LIKE ? OR channel LIKE ?)'); 
-    params.push(`%${search}%`, `%${search}%`);
+    // Split the search query into individual words
+    const tokens = search.trim().split(/\s+/);
+    
+    tokens.forEach(token => {
+        // For EACH word, we add a rule: 
+        // "This word must exist in either the Name OR the Channel"
+        conditions.push('(name LIKE ? OR channel LIKE ?)'); 
+        params.push(`%${token}%`, `%${token}%`);
+    });
   }
 
   if (conditions.length > 0) {
