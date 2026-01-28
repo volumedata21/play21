@@ -556,6 +556,7 @@ const App = () => {
         setViewState(ViewState.HOME);
         setCurrentVideo(null);
         setSelectedFolder(null);
+        setSearchTerm('');
     };
     const relatedVideos = useMemo(() => {
         if (!currentVideo) return [];
