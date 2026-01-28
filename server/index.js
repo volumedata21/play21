@@ -48,7 +48,8 @@ db.exec(`
     playback_position INTEGER DEFAULT 0,
     created_at INTEGER,
     views INTEGER DEFAULT 0,
-    is_favorite INTEGER DEFAULT 0
+    is_favorite INTEGER DEFAULT 0,
+    youtube_id TEXT
   );
   CREATE INDEX IF NOT EXISTS idx_folder ON videos(folder);
   CREATE INDEX IF NOT EXISTS idx_created ON videos(created_at);
@@ -325,7 +326,7 @@ async function scanMedia() {
       UPDATE videos SET 
       duration = ?, thumbnail = ?, subtitles = ?, description = ?, 
       channel = ?, genre = ?, release_date = ?, channel_avatar = ?,
-      name = ?
+      name = ?, youtube_id = ?
       WHERE id = ?
     `);
 
@@ -470,7 +471,8 @@ app.get('/api/discovery/random', (req, res) => {
 
 // --- VIDEOS (Paginated) ---
 app.get('/api/videos', (req, res) => {
-  const { page, limit, folder, sort } = req.query; // Get 'sort' from the request
+  // NEW: Add 'search' to the destructured variables
+  const { page, limit, folder, sort, search } = req.query; 
   const offset = (parseInt(page) - 1) * parseInt(limit);
 
   let orderBy = 'release_date DESC'; // Default
@@ -488,11 +490,25 @@ app.get('/api/videos', (req, res) => {
   let params = [];
 
   // 1. Build the Filter (Where)
+  const conditions = [];
+
   if (folder) {
-    whereClause = ' WHERE folder = ? OR folder LIKE ?';
-    countQuery += whereClause;
-    params = [folder, `${folder}/%`];
+    conditions.push('(folder = ? OR folder LIKE ?)');
+    params.push(folder, `${folder}/%`);
   }
+
+  // NEW: Search Logic
+  if (search) {
+    // We search the name, channel, or description
+    conditions.push('(name LIKE ? OR channel LIKE ?)'); 
+    params.push(`%${search}%`, `%${search}%`);
+  }
+
+  if (conditions.length > 0) {
+    whereClause = ' WHERE ' + conditions.join(' AND ');
+  }
+
+  countQuery += whereClause;
 
   // 2. Build the Final Query (Using the 'orderBy' we set above)
   const query = `SELECT * FROM videos ${whereClause} ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
@@ -696,47 +712,68 @@ app.post('/api/playlists/:id/videos', (req, res) => {
   }
 });
 
-// --- NEW: FOLDERS ENDPOINT ---
-// --- FOLDERS ENDPOINT (Recursive) ---
+// --- FOLDERS ENDPOINT (File System Scan for Images) ---
 app.get('/api/folders', (req, res) => {
-  const parent = req.query.parent;
+  const parent = req.query.parent || '';
+  // Check specifically in the media directory
+  const dirPath = parent ? path.join(mediaDir, parent) : mediaDir;
+
+  if (!fs.existsSync(dirPath)) return res.json({ folders: [] });
 
   try {
-    // If parent is provided, look for direct children: "Movies/Action" -> "Action"
-    // If no parent, look for roots: "Movies"
-    let query = 'SELECT DISTINCT folder FROM videos';
-    let params = [];
+    const items = fs.readdirSync(dirPath, { withFileTypes: true });
 
-    if (parent) {
-      query += ' WHERE folder LIKE ?';
-      params = [`${parent}/%`];
-    }
+    const folders = items
+      .filter(dirent => dirent.isDirectory())
+      .map(dirent => {
+        const folderName = dirent.name;
+        const fullFolderPath = path.join(dirPath, folderName);
+        
+        // List of image names we want to look for
+        const imageNames = ['folder.jpg', 'poster.jpg', 'channel.jpg', 'cover.jpg', 'fanart.jpg', 'folder.png', 'logo.png'];
+        let foundImage = null;
 
-    const allFolders = db.prepare(query).all(...params);
+        try {
+          const filesInFolder = fs.readdirSync(fullFolderPath);
+          // Case-insensitive match
+          const match = imageNames.find(img => filesInFolder.map(f => f.toLowerCase()).includes(img));
+          
+          if (match) {
+            // Create a URL for the frontend
+            const safeParent = parent ? parent.split('/').map(encodeURIComponent).join('/') : '';
+            foundImage = `/api/stream/${encodeURIComponent(folderName)}/${match}?folderContext=${safeParent}`;
+          }
+        } catch (e) {
+          // Ignore permission errors
+        }
 
-    const results = new Set();
-    allFolders.forEach(row => {
-      if (!row.folder) return;
+        return {
+          name: folderName,
+          image: foundImage
+        };
+      });
 
-      // LOGIC:
-      // If we are in "Movies", and we find "Movies/Action/90s", 
-      // we only want to show "Action", not "Action/90s".
-      let relevantPart = row.folder;
-      if (parent) {
-        // Strip the parent prefix ("Movies/")
-        relevantPart = relevantPart.substring(parent.length + 1);
-      }
-
-      // Take the first segment
-      const root = relevantPart.split(/[/\\]/)[0];
-      if (root) results.add(root);
-    });
-
-    res.json({ folders: Array.from(results).sort() });
+    res.json({ folders });
   } catch (e) {
-    console.error("Folder fetch failed", e);
-    res.status(500).json({ error: "Failed to fetch folders" });
+    console.error("Folder scan error:", e);
+    res.json({ folders: [] });
   }
+});
+
+// --- HELPER: Serve the Folder Images ---
+app.get('/api/stream/:folder/:image', (req, res) => {
+    const folder = decodeURIComponent(req.params.folder);
+    const image = req.params.image;
+    const parent = req.query.folderContext ? decodeURIComponent(req.query.folderContext) : '';
+    
+    // Construct path to the image on disk
+    const imagePath = path.join(mediaDir, parent, folder, image);
+    
+    if (fs.existsSync(imagePath)) {
+        res.sendFile(imagePath);
+    } else {
+        res.status(404).send('Not found');
+    }
 });
 
 // Remove a video from a specific playlist
