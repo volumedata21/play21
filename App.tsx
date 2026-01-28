@@ -203,7 +203,6 @@ const AppContent = () => {
         if (viewState === ViewState.HOME) {
             // Debounce: Wait 300ms after user stops typing to avoid too many requests
             const timeoutId = setTimeout(() => {
-                setAllVideos([]);
                 // Pass the current searchTerm here
                 fetchVideos(1, selectedFolder, true, searchTerm);
 
@@ -618,7 +617,8 @@ return (
                 className={`flex-1 h-full overflow-y-auto transition-all duration-300 ${viewState !== ViewState.WATCH && isSidebarOpen ? 'md:ml-64' : ''}`}
             >
 
-                {allVideos.length === 0 && (
+                {/* Only show welcome if empty AND not loading AND we are at the root (not searching/in folder) */}
+                {allVideos.length === 0 && !pagination.isLoading && !searchTerm && !selectedFolder && (
                     <div className="flex flex-col items-center justify-center h-full text-center px-6 animate-fade-in-up">
                         <div className="w-32 h-32 bg-gradient-to-tr from-brand-accent/20 to-brand-primary/20 rounded-full flex items-center justify-center mb-8 shadow-[0_0_40px_rgba(59,130,246,0.15)] ring-1 ring-white/10">
                             <svg className="w-16 h-16 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
