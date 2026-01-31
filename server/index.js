@@ -472,17 +472,13 @@ app.get('/api/discovery/random', (req, res) => {
 
 // --- VIDEOS (Paginated) ---
 app.get('/api/videos', (req, res) => {
-  // 1. Extract all variables from the request query
-  const { folder, search, hideHidden, sort, page = 1, limit = 50 } = req.query; 
-  
-  // 2. Calculate Offset (FIXED)
+  // NEW: Add 'search' to the destructured variables
+  const { page, limit, folder, sort, search } = req.query; 
   const offset = (parseInt(page) - 1) * parseInt(limit);
 
-  let conditions = [];
-  let params = [];
-  let orderBy = 'release_date DESC'; // Default sort
+  let orderBy = 'release_date DESC'; // Default
 
-  // 3. Map the frontend SortOption to SQL commands
+  // Map the frontend SortOption to SQL commands
   if (sort === 'Name (A-Z)') orderBy = 'name ASC';
   if (sort === 'Name (Z-A)') orderBy = 'name DESC';
   if (sort === 'Date Added (Newest)') orderBy = 'created_at DESC';
@@ -490,36 +486,45 @@ app.get('/api/videos', (req, res) => {
   if (sort === 'Air Date (Newest)') orderBy = 'release_date DESC';
   if (sort === 'Air Date (Oldest)') orderBy = 'release_date ASC';
 
-  // 4. Build the Filter (Where Clause)
+  let countQuery = 'SELECT COUNT(*) as total FROM videos';
+  let whereClause = '';
+  let params = [];
+
+  // 1. Build the Filter (Where)
+  const conditions = [];
+
   if (folder) {
     conditions.push('(folder = ? OR folder LIKE ?)');
     params.push(folder, `${folder}/%`);
   }
 
-  if (hideHidden === 'true') {
-    conditions.push('name NOT LIKE ?');
-    params.push('.%');
-  }
-
+  // NEW: Search Logic (Tokenized)
   if (search) {
+    // Split the search query into individual words
     const tokens = search.trim().split(/\s+/);
+    
     tokens.forEach(token => {
+        // For EACH word, we add a rule: 
+        // "This word must exist in either the Name OR the Channel"
         conditions.push('(name LIKE ? OR channel LIKE ?)'); 
         params.push(`%${token}%`, `%${token}%`);
     });
   }
 
-  const whereClause = conditions.length > 0 ? ' WHERE ' + conditions.join(' AND ') : '';
+  if (conditions.length > 0) {
+    whereClause = ' WHERE ' + conditions.join(' AND ');
+  }
+
+  countQuery += whereClause;
+
+  // 2. Build the Final Query (Using the 'orderBy' we set above)
+  const query = `SELECT * FROM videos ${whereClause} ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
 
   try {
-    // 5. Execute Count Query
-    const totalObj = db.prepare(`SELECT COUNT(*) as total FROM videos ${whereClause}`).get(...params);
+    const totalObj = db.prepare(countQuery).get(...params);
     const total = totalObj ? totalObj.total : 0;
 
-    // 6. Execute Data Query
-    // We add limit and offset to the params array for the final query
-    const videos = db.prepare(`SELECT * FROM videos ${whereClause} ORDER BY ${orderBy} LIMIT ? OFFSET ?`)
-                     .all(...params, parseInt(limit), offset);
+    const videos = db.prepare(query).all(...params, limit, offset);
 
     const formatted = videos.map(v => ({
       ...v,
@@ -538,15 +543,10 @@ app.get('/api/videos', (req, res) => {
 
     res.json({
       videos: formatted,
-      pagination: { 
-        page: parseInt(page), 
-        limit: parseInt(limit), 
-        total, 
-        totalPages: Math.ceil(total / limit) 
-      }
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
     });
   } catch (e) {
-    console.error("Database error:", e);
+    console.error(e);
     res.status(500).json({ error: "Database error" });
   }
 });

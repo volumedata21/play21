@@ -9,7 +9,6 @@ interface VideoPlayerProps {
     playlists: Playlist[];
     hasNext: boolean;
     hasPrev: boolean;
-    autoplay: boolean;
     onVideoSelect: (video: VideoFile) => void;
     onUpdateVideo: (video: VideoFile) => void;
     onAddToPlaylist: (videoId: string, playlistId: string) => void;
@@ -65,7 +64,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     playlists,
     hasNext,
     hasPrev,
-    autoplay,
     onVideoSelect,
     onUpdateVideo,
     onAddToPlaylist,
@@ -119,7 +117,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     e.preventDefault(); // Prevent scrolling down
                     vid.paused ? vid.play() : vid.pause();
                     break;
-
+                
                 case 'f':
                     e.preventDefault();
                     if (document.fullscreenElement) {
@@ -157,7 +155,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     e.preventDefault();
                     vid.muted = !vid.muted;
                     break;
-
+                
                 case 'home':
                     e.preventDefault();
                     vid.currentTime = 0;
@@ -328,7 +326,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 {/* Player Container */}
                 <div className="relative group">
                     <div className="absolute -inset-1 bg-gradient-to-r from-brand-primary via-brand-secondary to-brand-accent rounded-2xl blur-2xl opacity-20 group-hover:opacity-30 transition-opacity duration-1000 hidden md:block"></div>
-
+                    
                     {/* 2. CHANGED: rounded-none on mobile, md:rounded-2xl on desktop */}
                     <div className="relative w-full aspect-video bg-black rounded-none md:rounded-2xl overflow-hidden shadow-2xl ring-0 md:ring-1 ring-white/10 flex items-center justify-center">
 
@@ -350,18 +348,12 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             className="relative z-10 w-full h-full object-contain"
                             onPause={saveProgress}
                             onEnded={() => {
-                                // 1. Tell the server the video is finished (reset progress)
                                 fetch(`/api/videos/${video.id}/progress`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ time: 0 })
                                 });
                                 onUpdateVideo({ ...video, playbackPosition: 0 });
-
-                                // 2. If autoplay is on, move to the next video
-                                if (autoplay && hasNext) {
-                                    onNextVideo();
-                                }
                             }}
                         >
                             {video.subtitles && video.subtitles.map((sub, index) => (
@@ -375,7 +367,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                 />
                             ))}
                         </video>
-
+                        
                         {subtitlesEnabled && !hasSubtitles && (
                             <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-black/60 text-white px-4 py-1 rounded text-lg pointer-events-none z-20">
                                 [No Subtitle File Found]
@@ -465,8 +457,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white mb-4">{displayName}</h1>
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 pb-6 border-b border-white/5">
                         <div className="flex items-center gap-4">
-                            {/* Channel Avatar */}
-                            {video.channelAvatar ? (
+                             {/* Channel Avatar */}
+                             {video.channelAvatar ? (
                                 <img
                                     src={video.channelAvatar}
                                     className="w-12 h-12 rounded-full object-cover shadow-lg ring-2 ring-black bg-white/10"
@@ -500,8 +492,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             <button
                                 onClick={() => onToggleWatchLater?.(video.id)}
                                 className={`glass-button p-2.5 rounded-full transition-all ${playlists?.find(p => p.name === 'Watch Later')?.videoIds?.includes(video.id)
-                                    ? 'text-brand-primary bg-brand-primary/10 border-brand-primary/30'
-                                    : 'text-glass-subtext hover:text-white'
+                                        ? 'text-brand-primary bg-brand-primary/10 border-brand-primary/30'
+                                        : 'text-glass-subtext hover:text-white'
                                     }`}
                             >
                                 <HistoryIcon />
@@ -555,7 +547,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                 )}
                             </div>
 
-                            {/* YouTube Link */}
+                             {/* YouTube Link */}
                             <div className="relative">
                                 {video.youtubeId ? (
                                     <a
