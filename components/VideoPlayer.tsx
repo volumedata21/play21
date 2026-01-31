@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { VideoFile, Playlist } from '../types';
-import { LikeIcon, ShareIcon, MenuIcon, CameraIcon, StarIcon, YouTubeIcon, StepBackIcon, StepForwardIcon, PlaylistPlusIcon, NextVideoIcon, HistoryIcon, PrevVideoIcon, SpeedIcon, CCIcon, DownloadIcon, LinkIcon, XIcon } from './Icons';
+import { LikeIcon, ShareIcon, MenuIcon, CameraIcon, StarIcon, YouTubeIcon, StepBackIcon, StepForwardIcon, PlaylistPlusIcon, NextVideoIcon, HistoryIcon, PrevVideoIcon, SpeedIcon, CCIcon, DownloadIcon, LinkIcon, XIcon, AutoplayIcon } from './Icons';
 import { formatViews, formatTimeAgo } from '../services/fileService';
 
 interface VideoPlayerProps {
@@ -76,6 +76,9 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const [showShareMenu, setShowShareMenu] = useState(false);
     const [playbackSpeed, setPlaybackSpeed] = useState(1);
     const [subtitlesEnabled, setSubtitlesEnabled] = useState(false);
+    const [isAutoplayEnabled, setIsAutoplayEnabled] = useState(true);
+    const [countdown, setCountdown] = useState<number | null>(null);
+    const timerRef = useRef<NodeJS.Timeout | null>(null);
 
     // State for loading indicators
     const [isProcessingThumb, setIsProcessingThumb] = useState(false);
@@ -167,13 +170,30 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
 
+    // --- AUTOPLAY COUNTDOWN LOGIC ---
+    useEffect(() => {
+        if (countdown !== null && countdown > 0) {
+            timerRef.current = setTimeout(() => setCountdown(countdown - 1), 1000);
+        } else if (countdown === 0) {
+            onNextVideo();
+            setCountdown(null);
+        }
+        return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+    }, [countdown, onNextVideo]);
+
+    const handleVideoEnded = () => {
+        // Only trigger if enabled and there is actually a next video
+        if (isAutoplayEnabled && hasNext) {
+            setCountdown(5); // 5 second lead time
+        }
+    };
+
     // Increment view count on mount
     useEffect(() => {
         // We fire-and-forget this request. We don't need to wait for the result.
         fetch(`/api/videos/${video.id}/view`, { method: 'POST' });
     }, [video.id]);
 
-    // Resume playback from saved position
     // Resume playback from saved position
     useEffect(() => {
         const vid = videoRef.current;
@@ -354,6 +374,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                     body: JSON.stringify({ time: 0 })
                                 });
                                 onUpdateVideo({ ...video, playbackPosition: 0 });
+                                handleVideoEnded();
                             }}
                         >
                             {video.subtitles && video.subtitles.map((sub, index) => (
@@ -367,6 +388,64 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                 />
                             ))}
                         </video>
+
+                        {/* --- MODERN AUTOPLAY OVERLAY --- */}
+                        {countdown !== null && (
+                            <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/60 backdrop-blur-xl animate-fade-in">
+                                {/* Ambient Background Gradient Blob */}
+                                <div className="absolute inset-0 bg-gradient-to-tr from-brand-primary/10 via-transparent to-brand-accent/10 pointer-events-none" />
+
+                                {/* The Glass Card */}
+                                <div className="relative w-full max-w-sm mx-4 p-8 rounded-3xl border border-white/10 bg-black/40 shadow-2xl backdrop-blur-md overflow-hidden text-center">
+                                    
+                                    {/* Top Shine Line */}
+                                    <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+
+                                    <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-brand-primary mb-4 drop-shadow-sm">Up Next</h2>
+                                    
+                                    <p className="text-white font-bold text-xl mb-8 line-clamp-2 leading-relaxed drop-shadow-md">
+                                        {relatedVideos[0] ? relatedVideos[0].name.replace(/\.[^/.]+$/, "") : "Next Video"}
+                                    </p>
+
+                                    {/* Glowing Progress Circle */}
+                                    <div className="relative w-24 h-24 mx-auto flex items-center justify-center mb-8">
+                                        {/* Soft Blue Glow behind the circle */}
+                                        <div className="absolute inset-0 bg-brand-primary/30 blur-xl rounded-full animate-pulse" />
+
+                                        <svg className="absolute inset-0 w-full h-full -rotate-90 drop-shadow-[0_0_10px_rgba(59,130,246,0.5)]">
+                                            {/* Background Track */}
+                                            <circle cx="48" cy="48" r="42" stroke="white" strokeWidth="4" fill="transparent" className="opacity-10" />
+                                            {/* Moving Progress Bar */}
+                                            <circle
+                                                cx="48" cy="48" r="42" stroke="currentColor" strokeWidth="4" fill="transparent"
+                                                className="text-brand-primary transition-all duration-1000 ease-linear"
+                                                strokeLinecap="round"
+                                                strokeDasharray="264" // Calculated for r=42
+                                                style={{
+                                                    strokeDashoffset: 264 - (264 * (5 - countdown)) / 5
+                                                }}
+                                            />
+                                        </svg>
+                                        <span className="text-4xl font-bold text-white relative z-10 font-sans tracking-tighter">{countdown}</span>
+                                    </div>
+
+                                    <div className="flex flex-col gap-3">
+                                        <button
+                                            onClick={() => { setCountdown(null); onNextVideo(); }}
+                                            className="w-full bg-gradient-to-r from-brand-primary to-brand-accent hover:from-brand-secondary hover:to-brand-primary text-white py-3.5 rounded-2xl font-bold transition-all shadow-lg hover:shadow-brand-primary/40 active:scale-95 border border-white/10"
+                                        >
+                                            Play Now
+                                        </button>
+                                        <button
+                                            onClick={() => setCountdown(null)}
+                                            className="w-full text-glass-subtext hover:text-white py-2 text-sm font-medium transition-colors"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                         
                         {subtitlesEnabled && !hasSubtitles && (
                             <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-black/60 text-white px-4 py-1 rounded text-lg pointer-events-none z-20">
@@ -426,6 +505,15 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             className={`glass-button p-2 rounded-lg transition-colors ${subtitlesEnabled ? 'text-brand-primary bg-brand-primary/10 border-brand-primary/30' : 'text-glass-subtext hover:text-white'} ${!hasSubtitles ? 'opacity-30' : ''}`}
                         >
                             <CCIcon />
+                        </button>
+
+                        {/* --- NEW: AUTOPLAY TOGGLE --- */}
+                        <button
+                            onClick={() => setIsAutoplayEnabled(!isAutoplayEnabled)}
+                            className={`glass-button p-2 rounded-lg transition-all ${isAutoplayEnabled ? 'text-brand-primary bg-brand-primary/10 border-brand-primary/30' : 'text-glass-subtext hover:text-white'}`}
+                            title={isAutoplayEnabled ? "Autoplay is ON" : "Autoplay is OFF"}
+                        >
+                            <AutoplayIcon />
                         </button>
 
                         <div className="w-px h-6 bg-white/10 mx-1"></div>
