@@ -1,5 +1,5 @@
 import React from 'react';
-import { HomeIcon, FolderIcon, HistoryIcon, StarIcon, PlaylistPlusIcon, PlaylistIcon, SettingsIcon } from './Icons';
+import { HomeIcon, FolderIcon, HistoryIcon, StarIcon, PlaylistPlusIcon, PlaylistIcon } from './Icons';
 import { FolderStructure, ViewState, Playlist } from '../types';
 
 interface SidebarProps {
@@ -13,7 +13,6 @@ interface SidebarProps {
   onSelectView: (view: ViewState) => void;
   onSelectPlaylist: (id: string) => void;
   onCreatePlaylist: () => void;
-  onOpenSettings: () => void; // Defined in props
   onClose: () => void;
 }
 
@@ -28,13 +27,14 @@ const Sidebar: React.FC<SidebarProps> = ({
   onSelectView,
   onSelectPlaylist,
   onCreatePlaylist,
-  onOpenSettings, 
   onClose
 }) => {
+  // In Watch view, the sidebar should act as a floating overlay
   const isWatchMode = viewState === ViewState.WATCH;
 
   return (
     <>
+      {/* Overlay backdrop for mobile or Watch mode */}
       <div
         className={`fixed inset-0 bg-black/40 backdrop-blur-[2px] z-[55] transition-opacity duration-300 ${isOpen && (isWatchMode || window.innerWidth < 768) ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
         onClick={onClose}
@@ -85,7 +85,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <span className="text-sm font-medium tracking-wide">Favorites</span>
           </div>
 
-          {/* Watch Later Shortcut */}
+          {/* NEW: Watch Later Shortcut */}
           <div
             onClick={() => {
               const wl = playlists.find(p => p.name === 'Watch Later');
@@ -161,17 +161,8 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        {/* FIXED: Single bottom section with Settings button and Version Info */}
-        <div className="mt-auto p-4 border-t border-white/5 bg-black/20 flex flex-col gap-4">
-          <button
-            onClick={onOpenSettings}
-            className="flex items-center gap-3 px-4 py-3 rounded-xl text-glass-subtext hover:bg-white/5 hover:text-white transition-all duration-200 group"
-          >
-            <SettingsIcon />
-            <span className="text-sm font-medium">Settings</span>
-          </button>
-
-          <p className="px-2 text-[10px] text-glass-subtext leading-relaxed">
+        <div className="mt-auto p-6 border-t border-white/5 bg-black/20">
+          <p className="text-[10px] text-glass-subtext leading-relaxed">
             <span className="font-bold text-white/50">Play21</span> <br />
             Personal Library <br />
             &copy; 2025

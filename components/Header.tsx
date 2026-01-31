@@ -1,5 +1,5 @@
-import React from 'react';
-import { MenuIcon, SearchIcon, UploadIcon } from './Icons';
+import React, { useState, useRef, useEffect } from 'react';
+import { MenuIcon, SearchIcon, ScanIcon, ArrowLeftIcon, XIcon } from './Icons';
 
 interface HeaderProps {
   onTriggerScan: () => void;
@@ -8,8 +8,6 @@ interface HeaderProps {
   toggleSidebar: () => void;
   goHome: () => void;
   isScanning?: boolean;
-  isAutoplayOn: boolean;
-  onToggleAutoplay: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -18,74 +16,130 @@ const Header: React.FC<HeaderProps> = ({
   onSearchChange,
   toggleSidebar,
   goHome,
-  isScanning = false,
-  isAutoplayOn,      // <--- ADD THIS
-  onToggleAutoplay   // <--- ADD THIS
+  isScanning = false
 }) => {
+  // This manages opening/closing the search bar on mobile
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+  
+  // This lets us auto-focus the typing area when you click search
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isMobileSearchOpen && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [isMobileSearchOpen]);
+
   return (
-    <header className="fixed top-0 left-0 right-0 h-16 glass-panel border-b-0 border-b-white/5 flex items-center justify-between px-6 z-50">
-      <div className="flex items-center gap-6">
-        <button
-          onClick={toggleSidebar}
-          className="p-2 text-glass-subtext hover:text-white transition-colors rounded-full hover:bg-white/5"
-        >
-          <MenuIcon />
-        </button>
-
-        <div onClick={goHome} className="flex items-center gap-2 cursor-pointer group">
-          <div className="relative w-9 h-9 flex items-center justify-center">
-            {/* The Animated Glow Effect */}
-            <div className="absolute inset-0 bg-brand-primary rounded-full blur-md opacity-70 group-hover:opacity-100 group-hover:scale-115 animate-pulse transition-all duration-700 shadow-[0_0_20px_5px_rgba(37,99,235,0.6)]"></div>
-
-            {/* Your Logo */}
-            <img
-              src="/logo.png"
-              alt="Play21 Logo"
-              className="relative z-10 w-full h-full object-contain"
+    <header className="fixed top-0 left-0 right-0 h-16 glass-panel border-b-0 border-b-white/5 flex items-center justify-between px-4 md:px-6 z-50 transition-all duration-300">
+      
+      {/* --- MOBILE SEARCH MODE --- */}
+      {/* If mobile search is OPEN, we show this full-width search bar */}
+      {isMobileSearchOpen ? (
+        <div className="flex w-full items-center gap-3 animate-fade-in">
+          <button 
+            onClick={() => setIsMobileSearchOpen(false)}
+            className="p-2 -ml-2 text-glass-subtext hover:text-white"
+          >
+            <ArrowLeftIcon />
+          </button>
+          
+          <div className="flex-1 relative">
+             <input
+              ref={inputRef}
+              type="text"
+              placeholder="Search..."
+              value={searchTerm}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="w-full bg-white/10 border border-white/10 rounded-xl py-2 pl-4 pr-10 outline-none text-base text-white placeholder-white/30"
             />
+            {searchTerm && (
+              <button 
+                onClick={() => onSearchChange('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-white/50 hover:text-white"
+              >
+                <XIcon />
+              </button>
+            )}
           </div>
-          <span className="text-xl font-bold tracking-tight text-white/90">Play21</span>
         </div>
-      </div>
+      ) : (
+        /* --- NORMAL HEADER MODE --- */
+        /* If mobile search is CLOSED (or we are on desktop), we show the normal header */
+        <>
+          {/* LEFT: Menu Button & Logo */}
+          <div className="flex items-center gap-3 md:gap-6">
+            <button onClick={toggleSidebar} className="p-2 -ml-2 text-glass-subtext hover:text-white transition-colors rounded-full hover:bg-white/5">
+              <MenuIcon />
+            </button>
 
-      <div className="hidden md:flex flex-1 max-w-[500px] mx-8">
-        <div className="relative w-full group">
-          <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-white/30 group-focus-within:text-brand-primary transition-colors">
-            <SearchIcon />
+            <div onClick={goHome} className="flex items-center gap-2 cursor-pointer group">
+              {/* Logo Glow Effect */}
+              <div className="relative w-8 h-8 md:w-9 md:h-9 flex items-center justify-center">
+                <div className="absolute inset-0 bg-brand-primary rounded-full blur-md opacity-70 group-hover:opacity-100 animate-pulse transition-all duration-700"></div>
+                <img
+                  src="/logo.png"
+                  alt="Play21"
+                  className="relative z-10 w-full h-full object-contain"
+                />
+              </div>
+              <span className="text-lg md:text-xl font-bold tracking-tight text-white/90">Play21</span>
+            </div>
           </div>
-          <input
-            type="text"
-            placeholder="Search your library..."
-            value={searchTerm}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full bg-black/20 border border-white/10 rounded-2xl py-2.5 pl-10 pr-4 outline-none text-sm text-glass-text placeholder-glass-subtext focus:border-brand-primary/50 focus:bg-black/40 transition-all focus:shadow-[0_0_15px_rgba(37,99,235,0.1)]"
-          />
-        </div>
-      </div>
 
-      <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-white/5 border border-white/5">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-glass-subtext">Autoplay</span>
-        <button
-          onClick={onToggleAutoplay}
-          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isAutoplayOn ? 'bg-brand-primary' : 'bg-white/10'}`}
-        >
-          <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${isAutoplayOn ? 'translate-x-5' : 'translate-x-1'}`} />
-        </button>
-      </div>
+          {/* CENTER: Desktop Search Bar (Hidden on Mobile) */}
+          <div className="hidden md:flex flex-1 max-w-[500px] mx-8">
+            <div className="relative w-full group">
+              <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-white/30 group-focus-within:text-brand-primary transition-colors">
+                <SearchIcon />
+              </div>
+              <input
+                type="text"
+                placeholder="Search your library..."
+                value={searchTerm}
+                onChange={(e) => onSearchChange(e.target.value)}
+                className="w-full bg-black/20 border border-white/10 rounded-2xl py-2.5 pl-10 pr-10 outline-none text-sm text-glass-text placeholder-glass-subtext focus:border-brand-primary/50 focus:bg-black/40 transition-all focus:shadow-[0_0_15px_rgba(37,99,235,0.1)]"
+              />
+              {searchTerm && (
+                 <button 
+                    onClick={() => onSearchChange('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white"
+                 >
+                    <XIcon />
+                 </button>
+              )}
+            </div>
+          </div>
 
-      <div className="flex items-center gap-4">
-        <button
-          onClick={onTriggerScan}
-          disabled={isScanning}
-          className={`flex items-center gap-2 glass-button px-4 py-2 rounded-xl text-sm font-medium transition-all ${isScanning ? 'opacity-50 cursor-wait' : 'text-white/90 hover:bg-white/10'}`}
-          title="Scan Media Folder"
-        >
-          <UploadIcon />
-          <span className="hidden sm:inline">
-            {isScanning ? 'Scanning...' : 'Scan Library'}
-          </span>
-        </button>
-      </div>
+          {/* RIGHT: Actions */}
+          <div className="flex items-center gap-2 md:gap-4">
+            
+            {/* Mobile Search Button (Visible only on mobile) */}
+            <button 
+              onClick={() => setIsMobileSearchOpen(true)}
+              className="md:hidden p-2 text-glass-subtext hover:text-white rounded-full hover:bg-white/10"
+            >
+              <SearchIcon />
+            </button>
+
+            {/* New Scan Button */}
+            <button
+              onClick={onTriggerScan}
+              disabled={isScanning}
+              className={`flex items-center gap-2 glass-button px-3 md:px-4 py-2 rounded-xl text-sm font-medium transition-all ${isScanning ? 'opacity-50 cursor-wait' : 'text-white/90 hover:bg-white/10'}`}
+              title="Scan Media Folder"
+            >
+              <div className={isScanning ? 'animate-spin' : ''}>
+                 <ScanIcon />
+              </div>
+              {/* Text hidden on mobile, visible on desktop */}
+              <span className="hidden md:inline">
+                {isScanning ? 'Scanning...' : 'Scan'}
+              </span>
+            </button>
+          </div>
+        </>
+      )}
     </header>
   );
 };
