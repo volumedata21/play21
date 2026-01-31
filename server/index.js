@@ -55,6 +55,14 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_created ON videos(created_at);
 `);
 
+// Settings Table (NEW)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+  )
+`);
+
 // Playlists Table (NEW - Persists Playlists)
 db.exec(`
   CREATE TABLE IF NOT EXISTS playlists (
@@ -473,7 +481,7 @@ app.get('/api/discovery/random', (req, res) => {
 // --- VIDEOS (Paginated) ---
 app.get('/api/videos', (req, res) => {
   // NEW: Add 'search' to the destructured variables
-  const { page, limit, folder, sort, search } = req.query; 
+  const { page, limit, folder, sort, search, hideHidden } = req.query; 
   const offset = (parseInt(page) - 1) * parseInt(limit);
 
   let orderBy = 'release_date DESC'; // Default
@@ -492,6 +500,10 @@ app.get('/api/videos', (req, res) => {
 
   // 1. Build the Filter (Where)
   const conditions = [];
+
+  if (hideHidden === 'true') {
+    conditions.push("filename NOT LIKE '.%'"); 
+  }
 
   if (folder) {
     conditions.push('(folder = ? OR folder LIKE ?)');
@@ -793,6 +805,23 @@ app.delete('/api/playlists/:playlistId/videos/:videoId', (req, res) => {
   } catch (e) {
     res.status(500).json({ error: "Failed to remove video" });
   }
+});
+
+// --- SETTINGS (NEW) ---
+app.get('/api/settings', (req, res) => {
+  const rows = db.prepare('SELECT * FROM settings').all();
+  const settings = {};
+  rows.forEach(r => settings[r.key] = r.value);
+  res.json(settings);
+});
+
+app.post('/api/settings', (req, res) => {
+  const { key, value } = req.body;
+  db.prepare(`
+    INSERT INTO settings (key, value) VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `).run(key, String(value));
+  res.json({ success: true });
 });
 
 // Run scan on startup
