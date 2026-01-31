@@ -48,7 +48,8 @@ export enum ViewState {
   WATCH = 'WATCH',
   FAVORITES = 'FAVORITES',
   HISTORY = 'HISTORY',
-  PLAYLIST = 'PLAYLIST'
+  PLAYLIST = 'PLAYLIST',
+  SETTINGS = 'SETTINGS'
 }
 
 export interface AIMetadata {

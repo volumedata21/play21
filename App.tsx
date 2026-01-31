@@ -6,6 +6,7 @@ import VideoCard, { RecommendationRow } from './components/VideoCard';
 import VideoPlayer from './components/VideoPlayer';
 import { XIcon, PlaylistPlusIcon, SortIcon, ChevronDownIcon } from './components/Icons';
 import { processFiles } from './services/fileService';
+import SettingsModal from './components/SettingsModal';
 import { getMockData } from './services/mockData';
 import { VideoFile, FolderStructure, ViewState, Playlist, SortOption } from './types';
 import { VirtuosoGrid } from 'react-virtuoso';
@@ -22,6 +23,7 @@ const AppContent = () => {
     const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
     const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isScanning, setIsScanning] = useState(false);
     const [sortOption, setSortOption] = useState<SortOption>(SortOption.AIR_DATE_NEWEST); const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
     const [pagination, setPagination] = useState({ page: 1, hasMore: true, isLoading: false });
@@ -31,6 +33,7 @@ const AppContent = () => {
     const virtuosoRef = useRef<any>(null);
 
     const [recommendedVideos, setRecommendedVideos] = useState<VideoFile[]>([]);
+    const [hideHiddenFiles, setHideHiddenFiles] = useState(true); // Default to hiding hidden files
 
     const [mainScrollRef, setMainScrollRef] = useState<HTMLElement | null>(null);
 
@@ -81,8 +84,8 @@ const AppContent = () => {
             url.searchParams.set('sort', sortOption);
 
             if (folder) url.searchParams.set('folder', folder);
-            // NEW: Pass the search term to the server
             if (search) url.searchParams.set('search', search);
+            url.searchParams.set('hideHidden', hideHiddenFiles.toString()); // Tell the server our preference
 
             const response = await fetch(url.toString());
             const data = await response.json();
@@ -610,217 +613,43 @@ return (
                 onSelectView={handleSidebarViewChange}
                 onSelectPlaylist={handleSidebarPlaylistSelect}
                 onCreatePlaylist={handleCreatePlaylist}
+                onOpenSettings={() => setIsSettingsOpen(true)}
                 onClose={() => setIsSidebarOpen(false)}
             />
 
-            {/* 1. Added ref={setMainScrollRef} here so Virtuoso knows this is the scroller */}
             <main
                 ref={setMainScrollRef}
                 className={`flex-1 h-full overflow-y-auto transition-all duration-300 ${viewState !== ViewState.WATCH && isSidebarOpen ? 'md:ml-64' : ''}`}
             >
-
-                {/* Only show welcome if empty AND not loading AND we are at the root (not searching/in folder) */}
-                {allVideos.length === 0 && !pagination.isLoading && !searchTerm && !selectedFolder && (
+                {/* 1. Show Welcome if no videos are loaded yet */}
+                {allVideos.length === 0 && !pagination.isLoading && (
                     <div className="flex flex-col items-center justify-center h-full text-center px-6 animate-fade-in-up">
                         <div className="w-32 h-32 bg-gradient-to-tr from-brand-accent/20 to-brand-primary/20 rounded-full flex items-center justify-center mb-8 shadow-[0_0_40px_rgba(59,130,246,0.15)] ring-1 ring-white/10">
                             <svg className="w-16 h-16 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                         </div>
                         <h2 className="text-4xl font-bold mb-4 tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-blue-100 to-brand-primary/50">Welcome to Play21</h2>
-                        <p className="text-glass-subtext mb-8 max-w-lg text-lg leading-relaxed">
-                            A personal streaming experience for your local files.
-                        </p>
-                        <div className="flex gap-4">
-                            <button
-                                onClick={handleLoadDemo}
-                                className="bg-brand-primary hover:bg-brand-secondary text-white px-8 py-3.5 rounded-xl font-bold transition-all shadow-lg shadow-brand-primary/25 hover:shadow-brand-primary/40 hover:-translate-y-1 active:translate-y-0"
-                            >
-                                View Demo Gallery
-                            </button>
-                        </div>
-                        <p className="mt-8 text-xs text-glass-subtext/50">To open local files, use the "Open Folder" button in the top right.</p>
+                        <button onClick={handleLoadDemo} className="bg-brand-primary text-white px-8 py-3.5 rounded-xl font-bold">View Demo Gallery</button>
                     </div>
                 )}
 
+                {/* 2. Main Library Grid */}
                 {viewState !== ViewState.WATCH && allVideos.length > 0 && (
                     <div className="p-6 md:p-8 animate-fade-in min-h-full">
-                        <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-white/5 pb-4">
-                            <div className="flex items-baseline gap-3">
-                                <h2 className="text-2xl font-bold text-white capitalize">
-                                    {viewState === ViewState.HOME ? (selectedFolder || 'All Videos') :
-                                        viewState === ViewState.PLAYLIST ? playlists.find(p => p.id === selectedPlaylistId)?.name :
-                                            viewState.toLowerCase()}
-                                </h2>
-                                <span className="text-sm text-glass-subtext">{totalCount} videos</span>
-                            </div>
-
-                            <div className="relative">
-                                <button
-                                    onClick={() => setIsSortMenuOpen(!isSortMenuOpen)}
-                                    className="flex items-center gap-2 glass-button px-4 py-2 rounded-lg text-sm font-medium text-glass-text hover:text-white transition-colors"
-                                >
-                                    <SortIcon />
-                                    <span>{sortOption}</span>
-                                    <ChevronDownIcon />
-                                </button>
-
-                                {isSortMenuOpen && (
-                                    <div className="absolute right-0 top-full mt-2 w-56 glass-panel rounded-xl shadow-xl py-2 z-50 flex flex-col max-h-80 overflow-y-auto">
-                                        <div onClick={() => setIsSortMenuOpen(false)} className="fixed inset-0 z-40 bg-transparent" />
-                                        <div className="relative z-50">
-                                            {Object.values(SortOption).map(option => (
-                                                <button
-                                                    key={option}
-                                                    onClick={() => { setSortOption(option); setIsSortMenuOpen(false); }}
-                                                    className={`w-full text-left px-4 py-2.5 text-sm hover:bg-white/10 transition-colors ${sortOption === option ? 'text-brand-primary font-bold bg-brand-primary/10' : 'text-glass-text'}`}
-                                                >
-                                                    {option}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
+                        <div className="mb-6 border-b border-white/5 pb-4">
+                             <h2 className="text-2xl font-bold text-white capitalize">
+                                {viewState === ViewState.HOME ? (selectedFolder || 'All Videos') : viewState.toLowerCase()}
+                             </h2>
                         </div>
-
-                        {/* --- NAVIGATION HEADER (Go Up Button) --- */}
-                        {canGoUp && (
-                            <button
-                                onClick={handleGoUp}
-                                className="mb-6 flex items-center gap-2 text-sm font-bold text-brand-primary hover:text-white transition-colors bg-white/5 hover:bg-white/10 px-4 py-2 rounded-lg self-start"
-                            >
-                                <svg className="w-4 h-4 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
-                                <span>Back to Parent Folder</span>
-                            </button>
-                        )}
-
-                        {/* --- SLEEK SQUARE FOLDERS --- */}
-                        {currentSubFolders.length > 0 && (
-                            <div className="mb-8 animate-fade-in">
-                                <div className="flex items-center justify-between mb-4">
-                                    <div className="flex items-center gap-9">
-                                        <div className="bg-brand-primary/10 p-1.5 rounded-lg text-brand-primary">
-                                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" /></svg>
-                                        </div>
-                                        <h3 className="text-xs font-bold text-white uppercase">
-                                            Folders <span className="text-glass-subtext ml-1">({currentSubFolders.length})</span>
-                                        </h3>
-                                    </div>
-
-                                    {currentSubFolders.length > 6 && (
-                                        <button
-                                            onClick={() => setIsFoldersExpanded(!isFoldersExpanded)}
-                                            className="text-xs text-brand-primary hover:text-white transition-colors font-medium flex items-center gap-1 px-3 py-1.5 rounded-lg hover:bg-white/5"
-                                        >
-                                            {isFoldersExpanded ? 'Show Less' : 'Show All'}
-                                            <ChevronDownIcon className={`w-3 h-3 transition-transform ${isFoldersExpanded ? 'rotate-180' : ''}`} />
-                                        </button>
-                                    )}
-                                </div>
-
-                                <div className={`grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-4 transition-all duration-500 ${isFoldersExpanded ? '' : 'max-h-[100px] overflow-hidden'}`}>
-                                    {currentSubFolders.map((folder: any) => {
-                                        // Handle both legacy strings and new object format
-                                        const folderName = folder.name || folder;
-                                        const folderImage = folder.image || null;
-
-                                        return (
-                                            <div
-                                                key={folderName}
-                                                onClick={() => handleEnterFolder(folderName)}
-                                                className="group relative aspect-square bg-gradient-to-br from-white/10 to-transparent border border-white/5 hover:border-brand-primary/50 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_25px_rgba(59,130,246,0.15)] overflow-hidden"
-                                            >
-                                                {/* NEW: Background Image Support */}
-                                                {folderImage ? (
-                                                     <>
-                                                        <img 
-                                                            src={folderImage} 
-                                                            alt={folderName}
-                                                            className="absolute inset-0 w-full h-full object-cover opacity-50 group-hover:opacity-70 transition-opacity duration-300"
-                                                        />
-                                                        <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
-                                                     </>
-                                                ) : (
-                                                    <div className="absolute inset-0 bg-brand-primary/0 group-hover:bg-brand-primary/5 transition-colors duration-300" />
-                                                )}
-
-                                                {/* Icon (Only show if no image) */}
-                                                {!folderImage && (
-                                                    <div className="mb-3 p-3 rounded-full bg-black/20 group-hover:bg-brand-primary/20 text-brand-primary/70 group-hover:text-brand-primary transition-all duration-300 shadow-inner relative z-10">
-                                                        <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" /></svg>
-                                                    </div>
-                                                )}
-
-                                                <span className="relative z-10 text-xs font-bold text-white text-center px-3 w-full truncate drop-shadow-md">
-                                                    {folderName}
-                                                </span>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* --- SPLIT GRID WITH RECOMMENDED ROW --- */}
-                        {displayedVideos.length > 0 && (
-                            <div className="pb-20">
-                                {/* Static Row 1 & 2 (Changed to 3 cols to match bottom) */}
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-10 gap-x-6 mb-10 pr-4">
-                                    {displayedVideos.slice(0, 6).map(video => (
-                                        <VideoCard
-                                            key={video.id}
-                                            video={video}
-                                            isSelected={selectedVideoIds.has(video.id)}
-                                            onSelect={() => toggleSelection(video.id)}
-                                            onClick={() => handleVideoSelect(video)}
-                                        />
-                                    ))}
-                                </div>
-
-                                {/* The New Horizontal Discovery Row */}
-                                {recommendedVideos.length > 0 && viewState === ViewState.HOME && !selectedFolder && (
-                                    <RecommendationRow
-                                        videos={recommendedVideos}
-                                        onVideoSelect={handleVideoSelect}
-                                    />
-                                )}
-
-                                {/* The Remaining Library - FIXED: uses customScrollParent */}
-                                {mainScrollRef && displayedVideos.length > 6 && (
-                                    <div className="w-full">
-                                        <VirtuosoGrid
-                                            customScrollParent={mainScrollRef}
-                                            data={displayedVideos.slice(6)}
-                                            endReached={() => fetchVideos(pagination.page, selectedFolder, false, searchTerm)}
-                                            overscan={200}
-                                            components={{
-                                                List: React.forwardRef(({ style, children, ...props }: any, ref) => (
-                                                    <div
-                                                        ref={ref}
-                                                        {...props}
-                                                        style={style}
-                                                        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-10 gap-x-6 pr-4"
-                                                    >
-                                                        {children}
-                                                    </div>
-                                                ))
-                                            }}
-                                            itemContent={(index, video) => (
-                                                <VideoCard
-                                                    key={video.id}
-                                                    video={video}
-                                                    isSelected={selectedVideoIds.has(video.id)}
-                                                    onSelect={() => toggleSelection(video.id)}
-                                                    onClick={() => handleVideoSelect(video)}
-                                                />
-                                            )}
-                                        />
-                                    </div>
-                                )}
-                            </div>
-                        )}
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-10 gap-x-6">
+                            {displayedVideos.map(video => (
+                                <VideoCard key={video.id} video={video} onClick={() => handleVideoSelect(video)} />
+                            ))}
+                        </div>
                     </div>
                 )}
 
+                {/* 3. Video Player View */}
                 {viewState === ViewState.WATCH && currentVideo && (
                     <VideoPlayer
                         video={currentVideo}
@@ -838,9 +667,22 @@ return (
                     />
                 )}
             </main>
+
+            <SettingsModal 
+                isOpen={isSettingsOpen}
+                onClose={() => setIsSettingsOpen(false)}
+                hideHiddenFiles={hideHiddenFiles}
+                setHideHiddenFiles={(val) => {
+                    setHideHiddenFiles(val);
+                    // This refreshes the video list immediately when you toggle the setting
+                    fetchVideos(1, selectedFolder, true, searchTerm);
+                }}
+            />
         </div>
     </div>
 );
+
+
 };
 
 const App = () => {
