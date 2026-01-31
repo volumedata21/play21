@@ -79,6 +79,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const [isAutoplayEnabled, setIsAutoplayEnabled] = useState(true);
     const [countdown, setCountdown] = useState<number | null>(null);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
+    const [isTranscoding, setIsTranscoding] = useState(false);
 
     // State for loading indicators
     const [isProcessingThumb, setIsProcessingThumb] = useState(false);
@@ -367,6 +368,17 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             crossOrigin="anonymous"
                             className="relative z-10 w-full h-full object-contain"
                             onPause={saveProgress}
+                            onError={(e) => {
+                                const target = e.target as HTMLVideoElement;
+                                const error = target.error;
+                                
+                                // Error 4 = MEDIA_ERR_SRC_NOT_SUPPORTED (Format not supported)
+                                if (error && error.code === 4 && !isTranscoding) {
+                                    console.log("Format not supported, switching to transcode stream...");
+                                    setIsTranscoding(true);
+                                    // React will re-render with the new URL automatically
+                                }
+                            }}
                             onEnded={() => {
                                 fetch(`/api/videos/${video.id}/progress`, {
                                     method: 'POST',

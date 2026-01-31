@@ -824,6 +824,51 @@ app.post('/api/settings', (req, res) => {
   res.json({ success: true });
 });
 
+// --- HARDWARE TRANSCODING ROUTE (New) ---
+app.get('/api/stream/transcode/:id', (req, res) => {
+  const video = db.prepare('SELECT path FROM videos WHERE id = ?').get(req.params.id);
+  if (!video) return res.status(404).send('Not found');
+
+  let fullPath = video.path;
+  if (video.path.startsWith('/media')) {
+    const relPath = decodeURIComponent(video.path.replace(/^\/media\//, ''));
+    fullPath = path.join(mediaDir, relPath);
+  }
+
+  // Basic headers for a video stream
+  res.writeHead(200, {
+    'Content-Type': 'video/mp4',
+    'Connection': 'keep-alive',
+  });
+
+  // THE MAGIC: FFmpeg with Hardware Acceleration
+  ffmpeg(fullPath)
+    // 1. INPUT OPTIONS
+    // Attempt to use hardware decoding if available (Intel QSV / VAAPI)
+    // If this fails, FFmpeg usually falls back to software automatically
+    .inputOptions([
+      '-hwaccel auto', 
+    ])
+    // 2. OUTPUT OPTIONS
+    .outputOptions([
+      '-c:v libx264',      // Video Codec: H.264 (Most compatible)
+      '-preset ultrafast', // Priority: Speed > Compression size
+      '-crf 23',           // Quality: 23 is a good balance
+      '-c:a aac',          // Audio: AAC (Universal)
+      '-b:a 128k',         // Audio Bitrate
+      '-movflags frag_keyframe+empty_moov', // REQUIRED for streaming MP4 to browser
+      '-f mp4'             // Force MP4 format
+    ])
+    // 3. PIPE TO BROWSER
+    .on('error', (err) => {
+      // Browsers often cut the connection when seeking/closing
+      if (err.message !== 'Output stream closed') {
+        console.error('Transcoding error:', err);
+      }
+    })
+    .pipe(res, { end: true });
+});
+
 // Run scan on startup
 scanMedia();
 
