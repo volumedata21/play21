@@ -218,48 +218,51 @@ const AppContent = () => {
         }
     }, [selectedFolder, searchTerm]);
 
-// --- ROUTER SYNC LOGIC ---
-    useEffect(() => {
-        const path = location.pathname;
-        const queryFolder = searchParams.get('folder');
+// --- ROUTER SYNC LOGIC (FIXED) ---
+useEffect(() => {
+    const path = location.pathname;
+    const queryFolder = searchParams.get('folder');
+    
+    // 1. WATCH PAGE
+    if (path.startsWith('/watch/')) {
+        const videoId = path.split('/')[2];
         
-        // 1. WATCH PAGE
-        if (path.startsWith('/watch/')) {
-            const videoId = path.split('/')[2];
-            // If we are already watching this video, don't do anything
-            if (currentVideo?.id !== videoId) {
-                // FIX: Look in 'allVideos' AND 'recommendedVideos'
-                const vid = allVideos.find(v => v.id === videoId) || 
-                            recommendedVideos.find(v => v.id === videoId);
-                            
-                if (vid) {
-                    setCurrentVideo(vid);
-                    setViewState(ViewState.WATCH);
-                    setIsSidebarOpen(false);
-                }
-            }
-        } 
-        // 2. PLAYLIST PAGE
-        else if (path.startsWith('/playlist/')) {
-            const playlistId = path.split('/')[2];
-            setSelectedPlaylistId(playlistId);
-            setViewState(ViewState.PLAYLIST);
-            setCurrentVideo(null);
-        }
-        // 3. HOME / FOLDER PAGE
-        else {
-            setViewState(ViewState.HOME);
-            setCurrentVideo(null);
-            
-            // Handle Folder Logic
-            if (queryFolder) {
-                setSelectedFolder(queryFolder);
-            } else {
-                setSelectedFolder(null);
+        // Look in both allVideos and recommendedVideos
+        const vid = allVideos.find(v => v.id === videoId) || 
+                    recommendedVideos.find(v => v.id === videoId);
+                        
+        if (vid) {
+            setCurrentVideo(vid);
+            setViewState(ViewState.WATCH);
+            // Close sidebar for better viewing on mobile/web
+            setIsSidebarOpen(false);
+        } else {
+            // If videos are loaded but the ID isn't found, log a warning
+            if (allVideos.length > 0 || recommendedVideos.length > 0) {
+                console.warn("Video not found in current local state:", videoId);
             }
         }
-        // FIX: Add 'recommendedVideos' to the dependency array so it re-runs when they load
-    }, [location.pathname, searchParams, allVideos, recommendedVideos]);
+    } 
+    // 2. PLAYLIST PAGE
+    else if (path.startsWith('/playlist/')) {
+        const playlistId = path.split('/')[2];
+        setSelectedPlaylistId(playlistId);
+        setViewState(ViewState.PLAYLIST);
+        setCurrentVideo(null);
+    }
+    // 3. HOME / FOLDER PAGE
+    else {
+        setViewState(ViewState.HOME);
+        setCurrentVideo(null);
+        
+        if (queryFolder) {
+            setSelectedFolder(queryFolder);
+        } else {
+            setSelectedFolder(null);
+        }
+    }
+// Dependencies ensure this re-runs once data arrives from the server
+}, [location.pathname, searchParams, allVideos, recommendedVideos]);
 
 const handleScanLibrary = async () => {
     setIsScanning(true);
@@ -437,9 +440,17 @@ const handleBulkAddToPlaylist = async (playlistId: string) => {
 
 const handleNextVideo = () => {
     if (!currentVideo) return;
+    
+    // Look in displayed videos first
     const currentIndex = displayedVideos.findIndex(v => v.id === currentVideo.id);
     if (currentIndex !== -1 && currentIndex < displayedVideos.length - 1) {
         handleVideoSelect(displayedVideos[currentIndex + 1]);
+        return;
+    }
+
+    // Fallback: If not in the main list, play the first "Related Video"
+    if (relatedVideos.length > 0) {
+        handleVideoSelect(relatedVideos[0]);
     }
 };
 
