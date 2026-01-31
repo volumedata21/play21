@@ -191,13 +191,13 @@ export const RecommendationRow = ({
 }) => {
   return (
     <div className="my-10 animate-fade-in py-8 bg-white/[0.03] backdrop-blur-sm border-y border-white/5 md:border md:rounded-3xl relative isolate -mx-6 md:mx-0">
-      {/* Header - added px-6 so text aligns with the rest of the app */}
+      {/* Header */}
       <div className="flex items-center gap-3 mb-6 px-6">
         <div className="w-1.5 h-6 bg-brand-primary rounded-full shadow-[0_0_12px_rgba(37,99,235,0.8)]"></div>
         <h3 className="text-xl font-bold text-white tracking-tight">Recommended for You</h3>
       </div>
       
-      {/* Scroll Container - added px-6 so videos start aligned but scroll off-screen */}
+      {/* Scroll Container */}
       <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide snap-x touch-pan-x px-6">
         {videos.map((video) => (
           <div 
@@ -211,8 +211,24 @@ export const RecommendationRow = ({
                 className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" 
                 alt={video.name}
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent opacity-60 group-hover:opacity-80" />
+              
+              {/* 1. FIXED: Gradient only covers the bottom 40% (approx 1/3rd visually) */}
+              <div className="absolute bottom-0 left-0 right-0 h-[40%] bg-gradient-to-t from-black via-black/80 to-transparent opacity-100" />
+              
               <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4 text-left">
+                
+                {/* 2. Channel Avatar with Thicker Stroke & Glow */}
+                {(video.channelAvatar || (video as any).channel_avatar) && (
+                    <div className="mb-3">
+                        <img 
+                            src={video.channelAvatar || (video as any).channel_avatar} 
+                            // Added border-[1.5px] and custom shadow for the glow
+                            className="w-8 h-8 rounded-full border-[1.5px] border-white/50 shadow-[0_0_12px_rgba(255,255,255,0.3)] object-cover" 
+                            alt={video.channel || "Channel"} 
+                        />
+                    </div>
+                )}
+
                 <p className="text-xs sm:text-sm font-bold text-white line-clamp-2 leading-snug drop-shadow-md">
                     {video.name}
                 </p>
