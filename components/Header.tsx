@@ -1,13 +1,15 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { MenuIcon, SearchIcon, UploadIcon } from './Icons';
 
 interface HeaderProps {
-  onTriggerScan: () => void; // Renamed from onFilesSelected
+  onTriggerScan: () => void;
   searchTerm: string;
   onSearchChange: (term: string) => void;
   toggleSidebar: () => void;
   goHome: () => void;
-  isScanning?: boolean; // Optional prop to show a loading state
+  isScanning?: boolean;
+  isAutoplayOn: boolean;
+  onToggleAutoplay: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -16,36 +18,21 @@ const Header: React.FC<HeaderProps> = ({
   onSearchChange,
   toggleSidebar,
   goHome,
-  isScanning = false
+  isScanning = false,
+  isAutoplayOn,      // <--- ADD THIS
+  onToggleAutoplay   // <--- ADD THIS
 }) => {
-  const [showUserMenu, setShowUserMenu] = useState(false);
-  const [avatar, setAvatar] = useState<string | null>(null);
-
-  const handleLogout = () => {
-    if (confirm("Are you sure you want to log out?")) {
-      window.location.reload();
-    }
-  };
-
-  const handleChangePassword = () => {
-    const pass = prompt("Enter new password:");
-    if (pass) alert("Password updated successfully!");
-  };
-
-  const handleChangeAvatar = () => {
-    const url = prompt("Enter avatar image URL:");
-    if (url) setAvatar(url);
-  };
-
   return (
     <header className="fixed top-0 left-0 right-0 h-16 glass-panel border-b-0 border-b-white/5 flex items-center justify-between px-6 z-50">
       <div className="flex items-center gap-6">
-        <button onClick={toggleSidebar} className="p-2 text-glass-subtext hover:text-white transition-colors rounded-full hover:bg-white/5">
+        <button
+          onClick={toggleSidebar}
+          className="p-2 text-glass-subtext hover:text-white transition-colors rounded-full hover:bg-white/5"
+        >
           <MenuIcon />
         </button>
 
         <div onClick={goHome} className="flex items-center gap-2 cursor-pointer group">
-          {/* Container with an animated glow instead of a solid background */}
           <div className="relative w-9 h-9 flex items-center justify-center">
             {/* The Animated Glow Effect */}
             <div className="absolute inset-0 bg-brand-primary rounded-full blur-md opacity-70 group-hover:opacity-100 group-hover:scale-115 animate-pulse transition-all duration-700 shadow-[0_0_20px_5px_rgba(37,99,235,0.6)]"></div>
@@ -76,8 +63,17 @@ const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
+      <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-white/5 border border-white/5">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-glass-subtext">Autoplay</span>
+        <button
+          onClick={onToggleAutoplay}
+          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isAutoplayOn ? 'bg-brand-primary' : 'bg-white/10'}`}
+        >
+          <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${isAutoplayOn ? 'translate-x-5' : 'translate-x-1'}`} />
+        </button>
+      </div>
+
       <div className="flex items-center gap-4">
-        {/* THE NEW SCAN BUTTON */}
         <button
           onClick={onTriggerScan}
           disabled={isScanning}
@@ -89,39 +85,6 @@ const Header: React.FC<HeaderProps> = ({
             {isScanning ? 'Scanning...' : 'Scan Library'}
           </span>
         </button>
-
-        <div className="relative">
-          <button
-            onClick={() => setShowUserMenu(!showUserMenu)}
-            className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-700 to-brand-dark border border-white/10 flex items-center justify-center text-xs font-bold shadow-lg overflow-hidden hover:ring-2 ring-brand-primary transition-all"
-          >
-            {avatar ? (
-              <img src={avatar} className="w-full h-full object-cover" />
-            ) : (
-              "U"
-            )}
-          </button>
-
-          {showUserMenu && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
-              <div className="absolute right-0 top-full mt-2 w-48 glass-panel rounded-xl shadow-2xl py-2 z-50 border border-white/10 animate-fade-in">
-                <div className="px-4 py-2 border-b border-white/5 mb-1">
-                  <p className="text-xs font-bold text-glass-subtext uppercase">User Options</p>
-                </div>
-                <button onClick={handleChangeAvatar} className="w-full text-left px-4 py-2 text-sm text-white/80 hover:bg-brand-primary/20 hover:text-white transition-colors">
-                  Change Avatar
-                </button>
-                <button onClick={handleChangePassword} className="w-full text-left px-4 py-2 text-sm text-white/80 hover:bg-brand-primary/20 hover:text-white transition-colors">
-                  Change Password
-                </button>
-                <button onClick={handleLogout} className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors">
-                  Logout
-                </button>
-              </div>
-            </>
-          )}
-        </div>
       </div>
     </header>
   );

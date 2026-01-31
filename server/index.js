@@ -473,21 +473,16 @@ app.get('/api/discovery/random', (req, res) => {
 // --- VIDEOS (Paginated) ---
 app.get('/api/videos', (req, res) => {
   // 1. Extract all variables from the request query
-  const { 
-    folder, 
-    search, 
-    hideHidden, 
-    sort, 
-    page = 1, 
-    limit = 50 
-  } = req.query;
-
+  const { folder, search, hideHidden, sort, page = 1, limit = 50 } = req.query; 
+  
+  // 2. Calculate Offset (FIXED)
   const offset = (parseInt(page) - 1) * parseInt(limit);
+
   let conditions = [];
   let params = [];
   let orderBy = 'release_date DESC'; // Default sort
 
-  // 2. Map the frontend SortOption to SQL commands
+  // 3. Map the frontend SortOption to SQL commands
   if (sort === 'Name (A-Z)') orderBy = 'name ASC';
   if (sort === 'Name (Z-A)') orderBy = 'name DESC';
   if (sort === 'Date Added (Newest)') orderBy = 'created_at DESC';
@@ -495,7 +490,7 @@ app.get('/api/videos', (req, res) => {
   if (sort === 'Air Date (Newest)') orderBy = 'release_date DESC';
   if (sort === 'Air Date (Oldest)') orderBy = 'release_date ASC';
 
-  // 3. Build the Filter (Where Clause)
+  // 4. Build the Filter (Where Clause)
   if (folder) {
     conditions.push('(folder = ? OR folder LIKE ?)');
     params.push(folder, `${folder}/%`);
@@ -517,11 +512,11 @@ app.get('/api/videos', (req, res) => {
   const whereClause = conditions.length > 0 ? ' WHERE ' + conditions.join(' AND ') : '';
 
   try {
-    // 4. Execute Count Query
+    // 5. Execute Count Query
     const totalObj = db.prepare(`SELECT COUNT(*) as total FROM videos ${whereClause}`).get(...params);
     const total = totalObj ? totalObj.total : 0;
 
-    // 5. Execute Data Query
+    // 6. Execute Data Query
     // We add limit and offset to the params array for the final query
     const videos = db.prepare(`SELECT * FROM videos ${whereClause} ORDER BY ${orderBy} LIMIT ? OFFSET ?`)
                      .all(...params, parseInt(limit), offset);
