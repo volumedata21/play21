@@ -28,7 +28,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onSelectView,
   onSelectPlaylist,
   onCreatePlaylist,
-  onOpenSettings, // FIXED: Added this here so it's usable in the component
+  onOpenSettings, 
   onClose
 }) => {
   const isWatchMode = viewState === ViewState.WATCH;
