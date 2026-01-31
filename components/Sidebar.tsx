@@ -1,5 +1,5 @@
 import React from 'react';
-import { HomeIcon, FolderIcon, HistoryIcon, StarIcon, PlaylistPlusIcon, PlaylistIcon } from './Icons';
+import { HomeIcon, FolderIcon, HistoryIcon, StarIcon, PlaylistPlusIcon, PlaylistIcon, SettingsIcon } from './Icons';
 import { FolderStructure, ViewState, Playlist } from '../types';
 
 interface SidebarProps {
@@ -13,6 +13,7 @@ interface SidebarProps {
   onSelectView: (view: ViewState) => void;
   onSelectPlaylist: (id: string) => void;
   onCreatePlaylist: () => void;
+  onOpenSettings: () => void;
   onClose: () => void;
 }
 
@@ -27,6 +28,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onSelectView,
   onSelectPlaylist,
   onCreatePlaylist,
+  onOpenSettings,
   onClose
 }) => {
   // In Watch view, the sidebar should act as a floating overlay
@@ -162,6 +164,16 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         <div className="mt-auto p-6 border-t border-white/5 bg-black/20">
+        {/* Settings Button */}
+          <button 
+            onClick={onOpenSettings}
+            className="flex items-center gap-3 w-full text-glass-subtext hover:text-white transition-colors mb-6 group"
+          >
+            <div className="group-hover:rotate-90 transition-transform duration-500">
+                <SettingsIcon /> 
+            </div>
+            <span className="text-sm font-medium">Settings</span>
+          </button>
           <p className="text-[10px] text-glass-subtext leading-relaxed">
             <span className="font-bold text-white/50">Play21</span> <br />
             Personal Library <br />
