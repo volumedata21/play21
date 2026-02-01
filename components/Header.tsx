@@ -150,7 +150,7 @@ const Header: React.FC<HeaderProps> = ({
 
                 {/* Dropdown Menu */}
                 {isScanMenuOpen && (
-                    <div className="absolute top-full right-0 mt-2 w-48 bg-[#121212] rounded-xl shadow-2xl py-1 z-50 animate-fade-in border border-white/10">
+                    <div className="absolute top-full right-0 mt-2 w-48 bg-gradient-to-br from-gray-900 to-black/90 backdrop-blur-md rounded-xl shadow-2xl py-1 z-50 animate-fade-in border border-white/10">
                         <button
                             onClick={(e) => handleScanClick(e, 'quick')}
                             className="w-full text-left px-4 py-2.5 text-sm hover:bg-white/10 text-white transition-colors"
