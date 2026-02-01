@@ -252,27 +252,39 @@ const AppContent = () => {
     };
 
 
-    // UPDATED: Handle data fetching when ViewState or Folder changes
+    // 1. INSTANT NAVIGATION (No Delay)
+    // Runs immediately when you click Sidebar items (Folder, Favorites, History, Playlists)
     useEffect(() => {
         const isFavorites = viewState === ViewState.FAVORITES;
         const isHistory = viewState === ViewState.HISTORY;
-        // 1. Determine the playlist ID if we are in playlist mode
         const currentPlaylistId = viewState === ViewState.PLAYLIST ? selectedPlaylistId : null;
 
-        // Debounce search
-        const timeoutId = setTimeout(() => {
-            // 2. PASS currentPlaylistId as the 7th argument
-            fetchVideos(1, selectedFolder, true, searchTerm, isFavorites, isHistory, currentPlaylistId);
+        // Fetch immediately
+        fetchVideos(1, selectedFolder, true, searchTerm, isFavorites, isHistory, currentPlaylistId);
 
-            if (selectedFolder && !isFavorites && !isHistory && !currentPlaylistId) {
-                fetchFolderList(selectedFolder);
-            } else {
-                setCurrentSubFolders([]);
-            }
+        if (selectedFolder && !isFavorites && !isHistory && !currentPlaylistId) {
+            fetchFolderList(selectedFolder);
+        } else {
+            setCurrentSubFolders([]);
+        }
+        // Note: We removed 'searchTerm' from this dependency array
+    }, [selectedFolder, viewState, selectedPlaylistId]); 
+
+
+    // 2. DEBOUNCED SEARCH (300ms Delay)
+    // Runs only when you type in the search bar
+    useEffect(() => {
+        const isFavorites = viewState === ViewState.FAVORITES;
+        const isHistory = viewState === ViewState.HISTORY;
+        const currentPlaylistId = viewState === ViewState.PLAYLIST ? selectedPlaylistId : null;
+
+        const timeoutId = setTimeout(() => {
+            // Only fetch if search term changed (optimization handled by React's dep array)
+            fetchVideos(1, selectedFolder, true, searchTerm, isFavorites, isHistory, currentPlaylistId);
         }, 300);
 
         return () => clearTimeout(timeoutId);
-    }, [selectedFolder, searchTerm, viewState, selectedPlaylistId]); // <--- 3. ADD selectedPlaylistId here
+    }, [searchTerm]); // Only runs on search change
 
     // --- ROUTER SYNC LOGIC (FIXED) ---
     useEffect(() => {
@@ -813,7 +825,7 @@ const AppContent = () => {
                                                         key={folderName}
                                                         onClick={() => handleEnterFolder(folderName)}
                                                         // 5. CHANGED: Reduced widths (w-28/w-36) to shrink height by ~15%
-                                                        className="flex-shrink-0 snap-start w-28 md:w-36 group relative aspect-video bg-gray-900/50 border border-white/10 hover:border-brand-primary/50 rounded-xl flex flex-col justify-end cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl overflow-hidden"
+                                                        className="flex-shrink-0 snap-start w-28 md:w-36 group relative aspect-video bg-gray-900/50 border border-white/10 hover:border-brand-primary/50 rounded-xl flex flex-col justify-end cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl overflow-hidden outline-none focus:outline-none focus:ring-0"
                                                     >
                                                         {folderImage ? (
                                                             <>
@@ -938,6 +950,11 @@ const AppContent = () => {
 const App = () => {
     return (
         <BrowserRouter>
+            {/* GLOBAL STYLE FIX: Removes the grey tap highlight on mobile/touch devices */}
+            <style>{`
+                * { -webkit-tap-highlight-color: transparent; }
+                *:focus { outline: none !important; }
+            `}</style>
             <AppContent />
         </BrowserRouter>
     );

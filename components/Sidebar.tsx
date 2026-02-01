@@ -50,7 +50,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           {/* Main Nav */}
           <div
             onClick={() => { onSelectView(ViewState.HOME); onSelectFolder(null); }}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-200 group ${viewState === ViewState.HOME && selectedFolder === null
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-100 outline-none focus:outline-none focus:ring-0 tap-highlight-transparent group ${viewState === ViewState.HOME && selectedFolder === null
                 ? 'bg-gradient-to-r from-brand-primary/20 to-brand-secondary/10 border border-white/5 text-white shadow-lg shadow-brand-primary/5'
                 : 'text-glass-subtext hover:bg-white/5 hover:text-white'
               }`}
@@ -63,7 +63,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
           <div
             onClick={() => onSelectView(ViewState.HISTORY)}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-200 group ${viewState === ViewState.HISTORY
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-100 outline-none focus:outline-none focus:ring-0 tap-highlight-transparent group ${viewState === ViewState.HISTORY
                 ? 'bg-gradient-to-r from-brand-primary/20 to-brand-secondary/10 border border-white/5 text-white shadow-lg shadow-brand-primary/5'
                 : 'text-glass-subtext hover:bg-white/5 hover:text-white'
               }`}
@@ -76,7 +76,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
           <div
             onClick={() => onSelectView(ViewState.FAVORITES)}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-200 group ${viewState === ViewState.FAVORITES
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-100 outline-none focus:outline-none focus:ring-0 tap-highlight-transparent group ${viewState === ViewState.FAVORITES
                 ? 'bg-gradient-to-r from-brand-primary/20 to-brand-secondary/10 border border-white/5 text-white shadow-lg shadow-brand-primary/5'
                 : 'text-glass-subtext hover:bg-white/5 hover:text-white'
               }`}
@@ -93,7 +93,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               const wl = playlists.find(p => p.name === 'Watch Later');
               if (wl) onSelectPlaylist(wl.id);
             }}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-200 group ${selectedPlaylistId === playlists.find(p => p.name === 'Watch Later')?.id
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-100 outline-none focus:outline-none focus:ring-0 tap-highlight-transparent group ${selectedPlaylistId === playlists.find(p => p.name === 'Watch Later')?.id
                 ? 'bg-gradient-to-r from-brand-primary/20 to-brand-secondary/10 border border-white/5 text-white shadow-lg shadow-brand-primary/5'
                 : 'text-glass-subtext hover:bg-white/5 hover:text-white'
               }`}
@@ -118,22 +118,22 @@ const Sidebar: React.FC<SidebarProps> = ({
             )}
             {/* FIX: Filter out Watch Later so it doesn't show up twice */}
             {playlists
-                .filter(p => p.name !== 'Watch Later')
-                .map(playlist => (
-                  <div
-                    key={playlist.id}
-                    onClick={() => onSelectPlaylist(playlist.id)}
-                    className={`flex items-center gap-3 px-4 py-2.5 rounded-xl cursor-pointer transition-all duration-200 truncate group ${viewState === ViewState.PLAYLIST && selectedPlaylistId === playlist.id
-                        ? 'bg-white/10 text-white border border-white/5 shadow-inner'
-                        : 'text-glass-subtext hover:bg-white/5 hover:text-white'
-                      }`}
-                  >
-                    <div className={`${viewState === ViewState.PLAYLIST && selectedPlaylistId === playlist.id ? 'text-brand-primary' : 'opacity-70 group-hover:opacity-100'}`}>
-                      <PlaylistIcon />
-                    </div>
-                    <span className="text-sm font-medium truncate">{playlist.name}</span>
+              .filter(p => p.name !== 'Watch Later')
+              .map(playlist => (
+                <div
+                  key={playlist.id}
+                  onClick={() => onSelectPlaylist(playlist.id)}
+                  className={`flex items-center gap-3 px-4 py-2.5 rounded-xl cursor-pointer transition-all duration-100 outline-none focus:outline-none focus:ring-0 tap-highlight-transparent truncate group ${viewState === ViewState.PLAYLIST && selectedPlaylistId === playlist.id
+                    ? 'bg-white/10 text-white border border-white/5 shadow-inner'
+                    : 'text-glass-subtext hover:bg-white/5 hover:text-white'
+                    }`}
+                >
+                  <div className={`${viewState === ViewState.PLAYLIST && selectedPlaylistId === playlist.id ? 'text-brand-primary' : 'opacity-70 group-hover:opacity-100'}`}>
+                    <PlaylistIcon />
                   </div>
-            ))}
+                  <span className="text-sm font-medium truncate">{playlist.name}</span>
+                </div>
+              ))}
           </div>
 
           {/* Folders */}
@@ -151,9 +151,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <div
                   key={folder}
                   onClick={() => { onSelectView(ViewState.HOME); onSelectFolder(folder); }}
-                  className={`flex items-center gap-3 px-4 py-2.5 rounded-xl cursor-pointer transition-all duration-200 truncate group ${isSelected
-                      ? 'bg-white/10 text-white border border-white/5 shadow-inner'
-                      : 'text-glass-subtext hover:bg-white/5 hover:text-white'
+                  className={`flex items-center gap-3 px-4 py-2.5 rounded-xl cursor-pointer transition-all duration-100 outline-none focus:outline-none focus:ring-0 tap-highlight-transparent truncate group ${isSelected
+                    ? 'bg-white/10 text-white border border-white/5 shadow-inner'
+                    : 'text-glass-subtext hover:bg-white/5 hover:text-white'
                     }`}
                 >
                   <div className={`${isSelected ? 'text-brand-secondary' : 'opacity-70 group-hover:opacity-100'}`}>
@@ -167,13 +167,13 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         <div className="mt-auto p-6 border-t border-white/5 bg-black/20">
-        {/* Settings Button */}
+          {/* Settings Button */}
           <button 
             onClick={onOpenSettings}
-            className="flex items-center gap-3 w-full text-glass-subtext hover:text-white transition-colors mb-6 group"
+            className="flex items-center gap-3 w-full text-glass-subtext hover:text-white transition-colors mb-6 group outline-none focus:outline-none focus:ring-0 tap-highlight-transparent"
           >
             <div className="group-hover:rotate-90 transition-transform duration-500">
-                <SettingsIcon /> 
+              <SettingsIcon />
             </div>
             <span className="text-sm font-medium">Settings</span>
           </button>
