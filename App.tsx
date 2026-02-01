@@ -143,7 +143,7 @@ const AppContent = () => {
                     const uniqueNewVideos = newVideos.filter((v: any) => !existingIds.has(v.id));
                     return [...prev, ...uniqueNewVideos];
                 });
-                
+
                 setPagination(prev => ({
                     ...prev,
                     page: prev.page + 1,
@@ -154,7 +154,7 @@ const AppContent = () => {
         } catch (error: any) {
             // Ignore errors caused by us cancelling the request
             if (error.name === 'AbortError') return;
-            
+
             console.log("Backend error", error);
             setPagination(prev => ({ ...prev, isLoading: false }));
         }
@@ -775,69 +775,77 @@ const AppContent = () => {
                                 </button>
                             )}
 
-                            {/* --- SLEEK SQUARE FOLDERS --- */}
+                            {/* --- MODERN GLASS FOLDER SHELF (Compact & Faded) --- */}
                             {currentSubFolders.length > 0 && (
-                                <div className="mb-8 animate-fade-in">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <div className="flex items-center gap-9">
-                                            <div className="bg-brand-primary/10 p-1.5 rounded-lg text-brand-primary">
-                                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" /></svg>
-                                            </div>
-                                            <h3 className="text-xs font-bold text-white uppercase">
-                                                Folders <span className="text-glass-subtext ml-1">({currentSubFolders.length})</span>
-                                            </h3>
-                                        </div>
+                                // 1. CHANGED: Reduced bottom margin (mb-14 -> mb-10) for tighter layout
+                                <div className="mb-10 relative group/section animate-fade-in">
 
-                                        {currentSubFolders.length > 6 && (
-                                            <button
-                                                onClick={() => setIsFoldersExpanded(!isFoldersExpanded)}
-                                                className="text-xs text-brand-primary hover:text-white transition-colors font-medium flex items-center gap-1 px-3 py-1.5 rounded-lg hover:bg-white/5"
-                                            >
-                                                {isFoldersExpanded ? 'Show Less' : 'Show All'}
-                                                <ChevronDownIcon className={`w-3 h-3 transition-transform ${isFoldersExpanded ? 'rotate-180' : ''}`} />
-                                            </button>
-                                        )}
+                                    {/* BACKGROUND CONTAINER */}
+                                    <div className="absolute inset-0 rounded-3xl border border-white/5 bg-white/[0.02] backdrop-blur-2xl overflow-hidden">
+                                        <div className="absolute -top-20 -left-20 w-96 h-96 bg-brand-primary/10 rounded-full blur-[80px] pointer-events-none" />
+                                        <div className="absolute -bottom-20 -right-20 w-96 h-96 bg-brand-accent/10 rounded-full blur-[80px] pointer-events-none" />
                                     </div>
 
-                                    <div className={`grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-4 transition-all duration-500 ${isFoldersExpanded ? '' : 'max-h-[100px] overflow-hidden'}`}>
-                                        {currentSubFolders.map((folder: any) => {
-                                            // Handle both legacy strings and new object format
-                                            const folderName = folder.name || folder;
-                                            const folderImage = folder.image || null;
+                                    {/* CONTENT WRAPPER */}
+                                    {/* 2. CHANGED: Reduced padding (p-6 -> p-5) to reduce overall height */}
+                                    <div className="relative z-10 p-5 md:p-6">
 
-                                            return (
-                                                <div
-                                                    key={folderName}
-                                                    onClick={() => handleEnterFolder(folderName)}
-                                                    className="group relative aspect-square bg-gradient-to-br from-white/10 to-transparent border border-white/5 hover:border-brand-primary/50 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_25px_rgba(59,130,246,0.15)] overflow-hidden"
-                                                >
-                                                    {/* NEW: Background Image Support */}
-                                                    {folderImage ? (
-                                                        <>
-                                                            <img
-                                                                src={folderImage}
-                                                                alt={folderName}
-                                                                className="absolute inset-0 w-full h-full object-cover opacity-50 group-hover:opacity-70 transition-opacity duration-300"
-                                                            />
-                                                            <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
-                                                        </>
-                                                    ) : (
-                                                        <div className="absolute inset-0 bg-brand-primary/0 group-hover:bg-brand-primary/5 transition-colors duration-300" />
-                                                    )}
+                                        {/* Header */}
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <div className="bg-white/5 border border-white/10 p-1.5 rounded-lg text-brand-primary shadow-inner">
+                                                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" /></svg>
+                                            </div>
+                                            <div>
+                                                <h3 className="text-sm font-bold text-white tracking-wide">Library Folders</h3>
+                                            </div>
+                                        </div>
 
-                                                    {/* Icon (Only show if no image) */}
-                                                    {!folderImage && (
-                                                        <div className="mb-3 p-3 rounded-full bg-black/20 group-hover:bg-brand-primary/20 text-brand-primary/70 group-hover:text-brand-primary transition-all duration-300 shadow-inner relative z-10">
-                                                            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" /></svg>
+                                        {/* Scrollable Carousel */}
+                                        {/* 3. CHANGED: Added [mask-image] for the fade effect at edges */}
+                                        {/* 4. CHANGED: Increased negative margins (-mx-6) to allow fade to breathe */}
+                                        <div
+                                            /* Added pt-4 to prevent hover clipping */
+                                            className="flex overflow-x-auto gap-3 pb-2 pt-4 snap-x snap-mandatory scroll-smooth no-scrollbar -mx-6 px-6 [mask-image:linear-gradient(to_right,transparent,black_5%,black_95%,transparent)]"
+                                        >
+                                            {currentSubFolders.map((folder: any) => {
+                                                const folderName = folder.name || folder;
+                                                const folderImage = folder.image || null;
+
+                                                return (
+                                                    <div
+                                                        key={folderName}
+                                                        onClick={() => handleEnterFolder(folderName)}
+                                                        // 5. CHANGED: Reduced widths (w-28/w-36) to shrink height by ~15%
+                                                        className="flex-shrink-0 snap-start w-28 md:w-36 group relative aspect-video bg-gray-900/50 border border-white/10 hover:border-brand-primary/50 rounded-xl flex flex-col justify-end cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl overflow-hidden"
+                                                    >
+                                                        {folderImage ? (
+                                                            <>
+                                                                <img
+                                                                    src={folderImage}
+                                                                    alt={folderName}
+                                                                    className="absolute inset-0 w-full h-full object-cover object-top opacity-70 group-hover:opacity-100 transition-opacity duration-500"
+                                                                />
+                                                                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
+                                                            </>
+                                                        ) : (
+                                                            <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-white/0 group-hover:from-brand-primary/20 transition-colors" />
+                                                        )}
+
+                                                        {!folderImage && (
+                                                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 p-1.5 rounded-full bg-black/20 text-white/20 group-hover:text-brand-primary transition-colors border border-white/5">
+                                                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" /></svg>
+                                                            </div>
+                                                        )}
+
+                                                        <div className="relative z-10 w-full p-2.5 text-left">
+                                                            <span className="block text-[10px] md:text-xs font-medium text-white/90 leading-tight line-clamp-2 group-hover:text-white transition-colors">
+                                                                {folderName}
+                                                            </span>
                                                         </div>
-                                                    )}
-
-                                                    <span className="relative z-10 text-xs font-bold text-white text-center px-3 w-full truncate drop-shadow-md">
-                                                        {folderName}
-                                                    </span>
-                                                </div>
-                                            );
-                                        })}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
                                 </div>
                             )}
