@@ -85,7 +85,7 @@ const AppContent = () => {
     // ----------------------------------------------------------------
 
     // NEW: Added searchTerm argument (defaults to empty string)
-    const fetchVideos = async (page = 1, folder: string | null = null, reset = false, search = '', favoritesOnly = false) => {
+    const fetchVideos = async (page = 1, folder: string | null = null, reset = false, search = '', favoritesOnly = false, historyOnly = false) => {
         // Prevent duplicate loads (only if not resetting)
         if (!reset && (pagination.isLoading || !pagination.hasMore)) return;
 
@@ -110,6 +110,7 @@ const AppContent = () => {
             if (folder) url.searchParams.set('folder', folder);
             if (search) url.searchParams.set('search', search);
             if (favoritesOnly) url.searchParams.set('favorites', 'true');
+            if (historyOnly) url.searchParams.set('history', 'true');
 
             // Pass the "signal" to fetch so we can cancel it
             const response = await fetch(url.toString(), { signal: controller.signal });
@@ -256,13 +257,14 @@ const AppContent = () => {
     // UPDATED: Handle data fetching when ViewState or Folder changes
     useEffect(() => {
         const isFavorites = viewState === ViewState.FAVORITES;
+        const isHistory = viewState === ViewState.HISTORY; // NEW
 
         // Debounce search
         const timeoutId = setTimeout(() => {
-            // If we are in Favorites mode, pass 'true' as the 5th argument
-            fetchVideos(1, selectedFolder, true, searchTerm, isFavorites);
+            // Updated to pass both flags
+            fetchVideos(1, selectedFolder, true, searchTerm, isFavorites, isHistory);
 
-            if (selectedFolder && !isFavorites) {
+            if (selectedFolder && !isFavorites && !isHistory) {
                 fetchFolderList(selectedFolder);
             } else {
                 setCurrentSubFolders([]);
@@ -270,7 +272,7 @@ const AppContent = () => {
         }, 300);
 
         return () => clearTimeout(timeoutId);
-    }, [selectedFolder, searchTerm, viewState]); // Added viewState dependency
+    }, [selectedFolder, searchTerm, viewState]);
 
     // --- ROUTER SYNC LOGIC (FIXED) ---
     useEffect(() => {
@@ -326,6 +328,12 @@ const AppContent = () => {
             setCurrentVideo(null);
             // We don't fetch here directly; the useEffect below handles the data fetch
             // based on the viewState change.
+        }
+
+        // NEW: HISTORY PAGE
+        else if (path === '/history') {
+            setViewState(ViewState.HISTORY);
+            setCurrentVideo(null);
         }
 
         // 3. HOME / FOLDER PAGE
@@ -400,14 +408,13 @@ const AppContent = () => {
 
         // 1. Filter by View State
         if (viewState === ViewState.FAVORITES) {
+            // Server handles filtering, but this keeps the list clean if we untoggle a favorite locally
             videos = videos.filter(v => v.isFavorite);
         } else if (viewState === ViewState.HISTORY) {
-            // History needs to respect the order of the history array (newest watched first)
-            // This is the ONLY time we sort on client side
-            const historyMap = new Map(allVideos.map(v => [v.id, v]));
-            videos = history.map(id => historyMap.get(id)).filter(Boolean) as VideoFile[];
+            // CHANGED: We now trust the server to return the correct history list.
+            // No need to map/filter manually anymore.
+            videos = allVideos; 
         } else if (viewState === ViewState.PLAYLIST && selectedPlaylistId) {
-            const playlist = playlists.find(p => p.id === selectedPlaylistId);
             videos = playlist ? playlist.videoIds.map(id => allVideos.find(v => v.id === id)).filter(Boolean) as VideoFile[] : [];
         }
 
@@ -647,6 +654,9 @@ const AppContent = () => {
     const handleSidebarViewChange = (newView: ViewState) => {
         if (newView === ViewState.FAVORITES) {
             navigate('/favorites');
+        } else if (newView === ViewState.HISTORY) {
+            // FIX: Navigate to specific URL so the router doesn't reset us to Home
+            navigate('/history');
         } else {
             setViewState(newView);
             navigate('/');

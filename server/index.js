@@ -514,9 +514,10 @@ app.get('/api/discovery/random', (req, res) => {
 });
 
 // --- VIDEOS (Paginated) ---
+// --- VIDEOS (Paginated) ---
 app.get('/api/videos', (req, res) => {
-  // NEW: Add 'search' to the destructured variables
-  const { page, limit, folder, sort, search, hideHidden, favorites } = req.query; 
+  // NEW: Add 'history' to the destructuring
+  const { page, limit, folder, sort, search, hideHidden, favorites, history } = req.query; 
   const offset = (parseInt(page) - 1) * parseInt(limit);
 
   let orderBy = 'release_date DESC'; // Default
@@ -529,7 +530,9 @@ app.get('/api/videos', (req, res) => {
   if (sort === 'Air Date (Newest)') orderBy = 'release_date DESC';
   if (sort === 'Air Date (Oldest)') orderBy = 'release_date ASC';
 
+  // Base Query Structure
   let countQuery = 'SELECT COUNT(*) as total FROM videos';
+  let queryStr = 'SELECT videos.* FROM videos'; // Default select
   let whereClause = '';
   let params = [];
 
@@ -549,35 +552,39 @@ app.get('/api/videos', (req, res) => {
     params.push(folder, `${folder}/%`);
   }
 
-  
-
-  // NEW: Search Logic (Tokenized)
+  // Search Logic
   if (search) {
-    // Split the search query into individual words
     const tokens = search.trim().split(/\s+/);
-    
     tokens.forEach(token => {
-        // CHANGED: We push to conditions individually. 
-        // Since we join with ' AND ' later, this forces EVERY word to be present.
         conditions.push('(name LIKE ? OR channel LIKE ?)'); 
         params.push(`%${token}%`, `%${token}%`);
     });
+  }
+
+  // 2. HISTORY MODE (The Fix)
+  // If requesting history, we must JOIN the history table and Sort by watched_at
+  if (history === 'true') {
+    // Override the base selection to include history data
+    queryStr = 'SELECT videos.*, history.watched_at FROM videos JOIN history ON videos.id = history.video_id';
+    countQuery = 'SELECT COUNT(*) as total FROM videos JOIN history ON videos.id = history.video_id';
+    
+    // Force the sort order to be "Recently Watched"
+    orderBy = 'history.watched_at DESC';
   }
 
   if (conditions.length > 0) {
     whereClause = ' WHERE ' + conditions.join(' AND ');
   }
 
-  countQuery += whereClause;
-
-  // 2. Build the Final Query (Using the 'orderBy' we set above)
-  const query = `SELECT * FROM videos ${whereClause} ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
+  // 3. Assemble Final Query
+  const finalQuery = `${queryStr} ${whereClause} ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
+  const finalCountQuery = `${countQuery} ${whereClause}`;
 
   try {
-    const totalObj = db.prepare(countQuery).get(...params);
+    const totalObj = db.prepare(finalCountQuery).get(...params);
     const total = totalObj ? totalObj.total : 0;
 
-    const videos = db.prepare(query).all(...params, limit, offset);
+    const videos = db.prepare(finalQuery).all(...params, limit, offset);
 
     const formatted = videos.map(v => ({
       ...v,
