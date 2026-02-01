@@ -85,10 +85,10 @@ const VideoCard: React.FC<VideoCardProps> = ({
   };
 
   return (
-    <div className="group cursor-pointer flex flex-col gap-3 relative">
+    <div className="group cursor-pointer flex flex-col gap-3 relative outline-none focus:outline-none focus:ring-0 tap-highlight-transparent">
       {/* Thumbnail Container */}
       <div
-        className="relative aspect-video rounded-2xl overflow-hidden bg-white/5 border border-white/5 shadow-2xl transition-all duration-300 transform group-hover:shadow-[0_0_20px_rgba(99,102,241,0.2)] group-hover:-translate-y-1"
+        className="relative aspect-video rounded-2xl overflow-hidden bg-white/5 border border-white/5 shadow-2xl transition-all duration-300 transform group-hover:shadow-[0_0_20px_rgba(99,102,241,0.2)] group-hover:-translate-y-1 outline-none focus:outline-none"
         onClick={handleCardClick}
       >
         {/* Hidden video for processing if no thumbnail provided */}
@@ -132,7 +132,6 @@ const VideoCard: React.FC<VideoCardProps> = ({
         {/* Hover Overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
-      </div> {/* <--- This closing div is now safely outside the comments! */}
 
       {/* --- UPDATED: Watch Later Button --- */}
         {onToggleWatchLater && (
@@ -159,6 +158,9 @@ const VideoCard: React.FC<VideoCardProps> = ({
              </div>
           </div>
         )}
+
+              </div> {/* <--- This closing div is now safely outside the comments! */}
+
 
       {/* Info Section */}
       <div className="flex gap-3 px-1" onClick={handleCardClick}>
@@ -237,7 +239,7 @@ export const RecommendationRow = ({
               e.preventDefault(); // Stop any default link behavior
               onVideoSelect(video);
             }}
-            className="flex-none w-36 sm:w-44 md:w-52 snap-start group cursor-pointer"
+            className="flex-none w-36 sm:w-44 md:w-52 snap-start group cursor-pointer outline-none focus:outline-none focus:ring-0"
           >
             <div className="relative aspect-[9/16] rounded-2xl overflow-hidden border border-white/5 bg-black transition-all duration-500 group-hover:scale-[1.03] group-hover:border-brand-primary/50 group-hover:shadow-[0_0_30px_rgba(37,99,235,0.2)]">
               <img
