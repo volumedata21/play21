@@ -337,19 +337,28 @@ const AppContent = () => {
         }
     }, [location.pathname, searchParams, allVideos, recommendedVideos]);
 
-    const handleScanLibrary = async () => {
+    const handleScanLibrary = async (type: 'quick' | 'full' = 'quick') => {
         setIsScanning(true);
         try {
-            // 1. Tell server to scan
-            await fetch('/api/scan', { method: 'POST' });
+            const res = await fetch('/api/scan', { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type })
+            });
 
-            // 2. Fetch the updated list (Use the new function!)
-            // Reset to page 1, current folder, true = reset list
+            // Handle the "Already Scanning" case gracefully
+            if (res.status === 409) {
+                console.log("Scan already running in background");
+                // Optional: You could add an alert() here if you really want the user to know
+            }
+
+            // Refresh the view regardless
             await fetchVideos(1, selectedFolder, true);
         } catch (e) {
             console.error("Scan failed", e);
         } finally {
-            setIsScanning(false);
+            // Keep spinning for at least 500ms so the user feels the click registered
+            setTimeout(() => setIsScanning(false), 500);
         }
     };
 

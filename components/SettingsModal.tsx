@@ -30,7 +30,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
                     <div className="flex items-center justify-between">
                         <div>
                             <h3 className="text-sm font-medium text-white">Hide Hidden Files</h3>
-                            <p className="text-xs text-glass-subtext mt-1">Files starting with a dot (.) will not be shown. Re-scan library to update.</p>
+                            <p className="text-xs text-glass-subtext mt-1">Hides hidden files. Requires quick rescan.</p>
                         </div>
                         
                         {/* Toggle Switch */}

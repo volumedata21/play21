@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MenuIcon, SearchIcon, ScanIcon, ArrowLeftIcon, XIcon } from './Icons';
+import { MenuIcon, SearchIcon, ScanIcon, ArrowLeftIcon, XIcon, ChevronDownIcon } from './Icons';
 
 interface HeaderProps {
-  onTriggerScan: () => void;
+  onTriggerScan: (type?: 'quick' | 'full') => void; // UPDATED Signature
   searchTerm: string;
   onSearchChange: (term: string) => void;
   toggleSidebar: () => void;
@@ -18,10 +18,8 @@ const Header: React.FC<HeaderProps> = ({
   goHome,
   isScanning = false
 }) => {
-  // This manages opening/closing the search bar on mobile
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
-  
-  // This lets us auto-focus the typing area when you click search
+  const [isScanMenuOpen, setIsScanMenuOpen] = useState(false); // NEW STATE
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -30,11 +28,23 @@ const Header: React.FC<HeaderProps> = ({
     }
   }, [isMobileSearchOpen]);
 
+  // Close menu if clicking outside (simple implementation)
+  useEffect(() => {
+    const closeMenu = () => setIsScanMenuOpen(false);
+    if (isScanMenuOpen) window.addEventListener('click', closeMenu);
+    return () => window.removeEventListener('click', closeMenu);
+  }, [isScanMenuOpen]);
+
+  const handleScanClick = (e: React.MouseEvent, type: 'quick' | 'full') => {
+    e.stopPropagation(); // Prevent the window click listener from firing immediately
+    onTriggerScan(type);
+    setIsScanMenuOpen(false);
+  };
+
   return (
     <header className="fixed top-0 left-0 right-0 h-16 glass-panel border-b-0 border-b-white/5 flex items-center justify-between px-4 md:px-6 z-50 transition-all duration-300">
       
       {/* --- MOBILE SEARCH MODE --- */}
-      {/* If mobile search is OPEN, we show this full-width search bar */}
       {isMobileSearchOpen ? (
         <div className="flex w-full items-center gap-3 animate-fade-in">
           <button 
@@ -64,8 +74,6 @@ const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
       ) : (
-        /* --- NORMAL HEADER MODE --- */
-        /* If mobile search is CLOSED (or we are on desktop), we show the normal header */
         <>
           {/* LEFT: Menu Button & Logo */}
           <div className="flex items-center gap-3 md:gap-6">
@@ -74,20 +82,15 @@ const Header: React.FC<HeaderProps> = ({
             </button>
 
             <div onClick={goHome} className="flex items-center gap-2 cursor-pointer group">
-              {/* Logo Glow Effect */}
               <div className="relative w-8 h-8 md:w-9 md:h-9 flex items-center justify-center">
                 <div className="absolute inset-0 bg-brand-primary rounded-full blur-md opacity-70 group-hover:opacity-100 animate-pulse transition-all duration-700"></div>
-                <img
-                  src="/logo.png"
-                  alt="Play21"
-                  className="relative z-10 w-full h-full object-contain"
-                />
+                <img src="/logo.png" alt="Play21" className="relative z-10 w-full h-full object-contain" />
               </div>
               <span className="text-lg md:text-xl font-bold tracking-tight text-white/90">Play21</span>
             </div>
           </div>
 
-          {/* CENTER: Desktop Search Bar (Hidden on Mobile) */}
+          {/* CENTER: Desktop Search Bar */}
           <div className="hidden md:flex flex-1 max-w-[500px] mx-8">
             <div className="relative w-full group">
               <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-white/30 group-focus-within:text-brand-primary transition-colors">
@@ -101,10 +104,7 @@ const Header: React.FC<HeaderProps> = ({
                 className="w-full bg-black/20 border border-white/10 rounded-2xl py-2.5 pl-10 pr-10 outline-none text-sm text-glass-text placeholder-glass-subtext focus:border-brand-primary/50 focus:bg-black/40 transition-all focus:shadow-[0_0_15px_rgba(37,99,235,0.1)]"
               />
               {searchTerm && (
-                 <button 
-                    onClick={() => onSearchChange('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white"
-                 >
+                 <button onClick={() => onSearchChange('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white">
                     <XIcon />
                  </button>
               )}
@@ -113,30 +113,62 @@ const Header: React.FC<HeaderProps> = ({
 
           {/* RIGHT: Actions */}
           <div className="flex items-center gap-2 md:gap-4">
-            
-            {/* Mobile Search Button (Visible only on mobile) */}
-            <button 
-              onClick={() => setIsMobileSearchOpen(true)}
-              className="md:hidden p-2 text-glass-subtext hover:text-white rounded-full hover:bg-white/10"
-            >
+            <button onClick={() => setIsMobileSearchOpen(true)} className="md:hidden p-2 text-glass-subtext hover:text-white rounded-full hover:bg-white/10">
               <SearchIcon />
             </button>
 
-            {/* New Scan Button */}
-            <button
-              onClick={onTriggerScan}
-              disabled={isScanning}
-              className={`flex items-center gap-2 glass-button px-3 md:px-4 py-2 rounded-xl text-sm font-medium transition-all ${isScanning ? 'opacity-50 cursor-wait' : 'text-white/90 hover:bg-white/10'}`}
-              title="Scan Media Folder"
-            >
-              <div className={isScanning ? 'animate-spin' : ''}>
-                 <ScanIcon />
-              </div>
-              {/* Text hidden on mobile, visible on desktop */}
-              <span className="hidden md:inline">
-                {isScanning ? 'Scanning...' : 'Scan'}
-              </span>
-            </button>
+            {/* --- NEW SPLIT SCAN BUTTON --- */}
+            <div className="relative">
+                <div className="flex items-center bg-white/5 hover:bg-white/10 rounded-xl transition-all border border-white/5">
+                    {/* Primary Button: Quick Scan */}
+                    <button
+                        onClick={(e) => handleScanClick(e, 'quick')}
+                        disabled={isScanning}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-l-xl text-sm font-medium border-r border-white/10 ${isScanning ? 'opacity-50 cursor-wait' : 'text-white/90 hover:text-white'}`}
+                        title="Quick Scan (New files only)"
+                    >
+                        <div className={isScanning ? 'animate-spin' : ''}>
+                            <ScanIcon />
+                        </div>
+                        <span className="hidden md:inline">
+                            {isScanning ? 'Scanning...' : 'Scan'}
+                        </span>
+                    </button>
+
+                    {/* Dropdown Trigger */}
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setIsScanMenuOpen(!isScanMenuOpen);
+                        }}
+                        disabled={isScanning}
+                        className="px-1.5 py-2 rounded-r-xl text-glass-subtext hover:text-white hover:bg-white/5"
+                    >
+                        <ChevronDownIcon className="w-4 h-4" />
+                    </button>
+                </div>
+
+                {/* Dropdown Menu */}
+                {isScanMenuOpen && (
+                    <div className="absolute top-full right-0 mt-2 w-48 bg-[#121212] rounded-xl shadow-2xl py-1 z-50 animate-fade-in border border-white/10">
+                        <button
+                            onClick={(e) => handleScanClick(e, 'quick')}
+                            className="w-full text-left px-4 py-2.5 text-sm hover:bg-white/10 text-white transition-colors"
+                        >
+                            Quick Scan
+                            <span className="block text-[10px] text-glass-subtext mt-0.5">Find new files only</span>
+                        </button>
+                        <button
+                            onClick={(e) => handleScanClick(e, 'full')}
+                            className="w-full text-left px-4 py-2.5 text-sm hover:bg-white/10 text-white transition-colors border-t border-white/5"
+                        >
+                            Deep Metadata Refresh
+                            <span className="block text-[10px] text-glass-subtext mt-0.5">Re-read all NFOs & tags</span>
+                        </button>
+                    </div>
+                )}
+            </div>
+
           </div>
         </>
       )}
