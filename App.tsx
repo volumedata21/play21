@@ -37,6 +37,19 @@ const AppContent = () => {
 
     const [mainScrollRef, setMainScrollRef] = useState<HTMLElement | null>(null);
 
+    const virtuosoComponents = useMemo(() => ({
+        List: React.forwardRef(({ style, children, ...props }: any, ref) => (
+            <div
+                ref={ref}
+                {...props}
+                style={style}
+                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-10 gap-x-6 pr-4"
+            >
+                {children}
+            </div>
+        ))
+    }), []);
+
     useEffect(() => {
         const fetchDiscovery = async () => {
             try {
@@ -71,7 +84,7 @@ const AppContent = () => {
     // ----------------------------------------------------------------
 
     // NEW: Added searchTerm argument (defaults to empty string)
-    const fetchVideos = async (page = 1, folder: string | null = null, reset = false, search = '') => {
+    const fetchVideos = async (page = 1, folder: string | null = null, reset = false, search = '', favoritesOnly = false) => {
         // Prevent duplicate loads
         if (!reset && (pagination.isLoading || !pagination.hasMore)) return;
 
@@ -87,6 +100,7 @@ const AppContent = () => {
             if (folder) url.searchParams.set('folder', folder);
             // NEW: Pass the search term to the server
             if (search) url.searchParams.set('search', search);
+            if (favoritesOnly) url.searchParams.set('favorites', 'true');
 
             const response = await fetch(url.toString());
             const data = await response.json();
@@ -112,12 +126,18 @@ const AppContent = () => {
                 setAllVideos(newVideos);
                 setTotalCount(data.pagination.total);
                 setPagination({
-                    page: 2, // Next page will be 2
+                    page: 2,
                     hasMore: data.pagination.totalPages > 1,
                     isLoading: false
                 });
             } else {
-                setAllVideos(prev => [...prev, ...newVideos]);
+                // CRITICAL FIX: Filter out duplicates to prevent React crash
+                setAllVideos(prev => {
+                    const existingIds = new Set(prev.map(v => v.id));
+                    const uniqueNewVideos = newVideos.filter((v: any) => !existingIds.has(v.id));
+                    return [...prev, ...uniqueNewVideos];
+                });
+
                 setPagination(prev => ({
                     ...prev,
                     page: prev.page + 1,
@@ -132,26 +152,23 @@ const AppContent = () => {
     };
 
     const handleToggleSetting = async (key: string, value: boolean) => {
-    // 1. Update Local State
-    setAppSettings(prev => ({ ...prev, [key]: value }));
+        // 1. Update Local State
+        setAppSettings(prev => ({ ...prev, [key]: value }));
 
-    // 2. Persist to Server
-    await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key, value })
-    });
+        // 2. Persist to Server
+        await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key, value })
+        });
 
-    // 3. Refetch videos to apply change immediately
-    if (key === 'hideHiddenFiles') {
-        fetchVideos(1, selectedFolder, true, searchTerm);
-    }
-};
+        // 3. Refetch videos to apply change immediately
+        if (key === 'hideHiddenFiles') {
+            fetchVideos(1, selectedFolder, true, searchTerm);
+        }
+    };
 
     // Trigger the fetch when the app first loads
-    // 1. Initial Load
-    // 1. Initial Load
-    // 1. Initial Load
     useEffect(() => {
         fetchVideos(1, null, true);
         fetchFolderList();
@@ -159,34 +176,27 @@ const AppContent = () => {
         // NEW: This function talks to your database to get your saved data
         const loadPersistedData = async () => {
             try {
-                // Get Playlists from the database
+                // Get Playlists
                 const plRes = await fetch('/api/playlists');
                 const plData = await plRes.json();
-                setPlaylists(plData.playlists);
+                if (plData.playlists) setPlaylists(plData.playlists);
 
-                // Get Watch History from the database
+                // Get Watch History
                 const histRes = await fetch('/api/history');
                 const histData = await histRes.json();
-                setHistory(histData.history);
+                if (histData.history) setHistory(histData.history);
+
+                // Get Settings
+                const setRes = await fetch('/api/settings');
+                const setData = await setRes.json();
+                if (setData.hideHiddenFiles !== undefined) {
+                    setAppSettings(prev => ({ ...prev, hideHiddenFiles: setData.hideHiddenFiles === 'true' }));
+                }
             } catch (e) {
                 console.error("Failed to load persistence layer", e);
             }
-
-            const loadPersistedData = async () => {
-                try {
-                    // ... existing playlist/history loading ...
-
-                    // NEW: Load Settings
-                    const setRes = await fetch('/api/settings');
-                    const setData = await setRes.json();
-                    if (setData.hideHiddenFiles !== undefined) {
-                        setAppSettings(prev => ({ ...prev, hideHiddenFiles: setData.hideHiddenFiles === 'true' }));
-                    }
-                } catch (e) {
-                    console.error("Failed to load persistence layer", e);
-                }
-            };
         };
+
         loadPersistedData();
     }, []);
 
@@ -234,25 +244,24 @@ const AppContent = () => {
     };
 
 
-    // 2. When Folder OR Search Changes (Reset and Fetch)
+    // UPDATED: Handle data fetching when ViewState or Folder changes
     useEffect(() => {
-        if (viewState === ViewState.HOME) {
-            // Debounce: Wait 300ms after user stops typing to avoid too many requests
-            const timeoutId = setTimeout(() => {
-                // Pass the current searchTerm here
-                fetchVideos(1, selectedFolder, true, searchTerm);
+        const isFavorites = viewState === ViewState.FAVORITES;
 
-                // Fetch sub-folders logic...
-                if (selectedFolder) {
-                    fetchFolderList(selectedFolder);
-                } else {
-                    setCurrentSubFolders([]);
-                }
-            }, 300);
+        // Debounce search
+        const timeoutId = setTimeout(() => {
+            // If we are in Favorites mode, pass 'true' as the 5th argument
+            fetchVideos(1, selectedFolder, true, searchTerm, isFavorites);
 
-            return () => clearTimeout(timeoutId);
-        }
-    }, [selectedFolder, searchTerm]);
+            if (selectedFolder && !isFavorites) {
+                fetchFolderList(selectedFolder);
+            } else {
+                setCurrentSubFolders([]);
+            }
+        }, 300);
+
+        return () => clearTimeout(timeoutId);
+    }, [selectedFolder, searchTerm, viewState]); // Added viewState dependency
 
     // --- ROUTER SYNC LOGIC (FIXED) ---
     useEffect(() => {
@@ -263,20 +272,35 @@ const AppContent = () => {
         if (path.startsWith('/watch/')) {
             const videoId = path.split('/')[2];
 
-            // Look in both allVideos and recommendedVideos
+            // A. Check if we have it in memory
             const vid = allVideos.find(v => v.id === videoId) ||
                 recommendedVideos.find(v => v.id === videoId);
 
             if (vid) {
                 setCurrentVideo(vid);
                 setViewState(ViewState.WATCH);
-                // Close sidebar for better viewing on mobile/web
                 setIsSidebarOpen(false);
             } else {
-                // If videos are loaded but the ID isn't found, log a warning
-                if (allVideos.length > 0 || recommendedVideos.length > 0) {
-                    console.warn("Video not found in current local state:", videoId);
-                }
+                // B. CRITICAL FIX: Fetch specific video if not found in list (e.g. on Refresh)
+                fetch(`/api/videos/${videoId}`)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.error) {
+                            console.error("Video not found on server");
+                            navigate('/'); // Send home if invalid ID
+                        } else {
+                            // Normalize the data to match your types
+                            const videoData = {
+                                ...data,
+                                url: data.path, // server returns path, ui needs url
+                                subtitles: typeof data.subtitles === 'string' ? JSON.parse(data.subtitles) : []
+                            };
+                            setCurrentVideo(videoData);
+                            setViewState(ViewState.WATCH);
+                            setIsSidebarOpen(false);
+                        }
+                    })
+                    .catch(e => console.error("Single video fetch failed", e));
             }
         }
         // 2. PLAYLIST PAGE
@@ -286,18 +310,22 @@ const AppContent = () => {
             setViewState(ViewState.PLAYLIST);
             setCurrentVideo(null);
         }
+
+        // NEW: FAVORITES PAGE
+        else if (path === '/favorites') {
+            setViewState(ViewState.FAVORITES);
+            setCurrentVideo(null);
+            // We don't fetch here directly; the useEffect below handles the data fetch
+            // based on the viewState change.
+        }
+
         // 3. HOME / FOLDER PAGE
         else {
             setViewState(ViewState.HOME);
             setCurrentVideo(null);
-
-            if (queryFolder) {
-                setSelectedFolder(queryFolder);
-            } else {
-                setSelectedFolder(null);
-            }
+            if (queryFolder) setSelectedFolder(queryFolder);
+            else setSelectedFolder(null);
         }
-        // Dependencies ensure this re-runs once data arrives from the server
     }, [location.pathname, searchParams, allVideos, recommendedVideos]);
 
     const handleScanLibrary = async () => {
@@ -356,18 +384,18 @@ const AppContent = () => {
         if (viewState === ViewState.FAVORITES) {
             videos = videos.filter(v => v.isFavorite);
         } else if (viewState === ViewState.HISTORY) {
-            const historyVideos = history.map(id => allVideos.find(v => v.id === id)).filter(Boolean) as VideoFile[];
-            videos = [...historyVideos].reverse();
+            // History needs to respect the order of the history array (newest watched first)
+            // This is the ONLY time we sort on client side
+            const historyMap = new Map(allVideos.map(v => [v.id, v]));
+            videos = history.map(id => historyMap.get(id)).filter(Boolean) as VideoFile[];
         } else if (viewState === ViewState.PLAYLIST && selectedPlaylistId) {
             const playlist = playlists.find(p => p.id === selectedPlaylistId);
             videos = playlist ? playlist.videoIds.map(id => allVideos.find(v => v.id === id)).filter(Boolean) as VideoFile[] : [];
         }
 
-        // 2. FOLDER NAVIGATION (Simplified)
+        // 2. FOLDER NAVIGATION
         else if (selectedFolder) {
             showGoUp = selectedFolder.includes('/');
-
-            // Just filter videos, don't calculate subfolders here anymore
             videos = videos.filter(v => {
                 const isExactMatch = v.folder === selectedFolder;
                 const isSubFolder = v.folder.startsWith(selectedFolder + '/');
@@ -375,27 +403,10 @@ const AppContent = () => {
             });
         }
 
-        // 4. Sorting
-        const sortedVideos = [...videos].sort((a, b) => {
-            switch (sortOption) {
-                case SortOption.NAME_ASC: return a.name.localeCompare(b.name);
-                case SortOption.NAME_DESC: return b.name.localeCompare(a.name);
-                case SortOption.DATE_NEWEST: return (b.createdAt || 0) - (a.createdAt || 0);
-                case SortOption.DATE_OLDEST: return (a.createdAt || 0) - (b.createdAt || 0);
-                case SortOption.VIEWS_MOST: return (b.viewsCount || 0) - (a.viewsCount || 0);
-                case SortOption.VIEWS_LEAST: return (a.viewsCount || 0) - (b.viewsCount || 0);
-                case SortOption.DURATION_LONGEST: return (b.duration || 0) - (a.duration || 0);
-                case SortOption.DURATION_SHORTEST: return (a.duration || 0) - (b.duration || 0);
-                case SortOption.AIR_DATE_NEWEST:
-                    return (b.releaseDate || '').localeCompare(a.releaseDate || '');
-                case SortOption.AIR_DATE_OLDEST:
-                    return (a.releaseDate || '').localeCompare(b.releaseDate || '');
-                default: return 0;
-            }
-        });
+        // REMOVED: Client-side sorting switch. We rely on the server (SQL) to return the correct order.
 
-        return { displayedVideos: sortedVideos, canGoUp: showGoUp };
-    }, [allVideos, selectedFolder, searchTerm, viewState, history, playlists, selectedPlaylistId, sortOption]);
+        return { displayedVideos: videos, canGoUp: showGoUp };
+    }, [allVideos, selectedFolder, searchTerm, viewState, history, playlists, selectedPlaylistId]); // removed sortOption dependency
     // --- NEW NAVIGATION HANDLERS ---
 
     const handleEnterFolder = (subFolderName: string) => {
@@ -616,8 +627,12 @@ const AppContent = () => {
     // Removed duplicate handleSidebarViewChange
 
     const handleSidebarViewChange = (newView: ViewState) => {
-        setViewState(newView);
-        navigate('/');
+        if (newView === ViewState.FAVORITES) {
+            navigate('/favorites');
+        } else {
+            setViewState(newView);
+            navigate('/');
+        }
     };
 
     const handleSidebarFolderSelect = (folder: string | null) => {
@@ -667,7 +682,7 @@ const AppContent = () => {
                     settings={appSettings}
                     onToggleSetting={handleToggleSetting}
                 />
-                
+
 
                 {/* 1. Added ref={setMainScrollRef} here so Virtuoso knows this is the scroller */}
                 <main
@@ -697,7 +712,7 @@ const AppContent = () => {
                         </div>
                     )}
 
-                    
+
 
                     {viewState !== ViewState.WATCH && allVideos.length > 0 && (
                         <div className="p-6 md:p-8 animate-fade-in min-h-full">
@@ -850,18 +865,7 @@ const AppContent = () => {
                                                 data={displayedVideos.slice(6)}
                                                 endReached={() => fetchVideos(pagination.page, selectedFolder, false, searchTerm)}
                                                 overscan={200}
-                                                components={{
-                                                    List: React.forwardRef(({ style, children, ...props }: any, ref) => (
-                                                        <div
-                                                            ref={ref}
-                                                            {...props}
-                                                            style={style}
-                                                            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-10 gap-x-6 pr-4"
-                                                        >
-                                                            {children}
-                                                        </div>
-                                                    ))
-                                                }}
+                                                components={virtuosoComponents} // <--- USE THE MEMOIZED VARIABLE
                                                 itemContent={(index, video) => (
                                                     <VideoCard
                                                         key={video.id}
