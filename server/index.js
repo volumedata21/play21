@@ -506,7 +506,20 @@ app.use('/subtitles', express.static(subsDir));
 // Get 7 completely random videos from the entire library
 app.get('/api/discovery/random', (req, res) => {
   try {
-    const randomVideos = db.prepare('SELECT * FROM videos ORDER BY RANDOM() LIMIT 7').all();
+    const { hideHidden } = req.query;
+    
+    // Default base query
+    let sql = 'SELECT * FROM videos';
+
+    // Apply the filter if requested
+    if (hideHidden === 'true') {
+      sql += " WHERE filename NOT LIKE '.%'";
+    }
+
+    // Add the randomization and limit
+    sql += ' ORDER BY RANDOM() LIMIT 7';
+
+    const randomVideos = db.prepare(sql).all();
     res.json({ success: true, videos: randomVideos });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -540,7 +553,7 @@ app.get('/api/videos', (req, res) => {
   const conditions = [];
 
   if (hideHidden === 'true') {
-    conditions.push("filename NOT LIKE '.%'"); 
+    conditions.push("(filename NOT LIKE '.%' AND folder NOT LIKE '.%' AND folder NOT LIKE '%/.%')");
   }
 
   if (favorites === 'true') {
