@@ -213,11 +213,16 @@ function generateThumbnail(videoPath, videoId) {
 }
 
 // Helper to get video duration
-function getVideoDuration(path) {
+function getVideoMetadata(path) {
   return new Promise((resolve) => {
-    ffmpeg.ffprobe(path, (err, metadata) => {
-      if (err) return resolve(0);
-      resolve(metadata.format.duration || 0);
+    ffmpeg.ffprobe(path, (err, data) => {
+      if (err) return resolve({ duration: 0, tags: {} });
+      
+      // FFmpeg normalizes most tags, but we default to empty object if missing
+      const tags = data.format.tags || {};
+      const duration = data.format.duration || 0;
+      
+      resolve({ duration, tags });
     });
   });
 }
@@ -305,9 +310,10 @@ function getFilesRecursively(dir) {
 }
 
 // GLOBAL STATE: prevent double scanning
+// GLOBAL STATE: prevent double scanning
 let isScanning = false;
 
-async function scanMedia() {
+async function scanMedia(forceRefresh = false) {
   if (isScanning) return;
   isScanning = true;
   console.log('Starting background scan...');
@@ -379,9 +385,9 @@ async function scanMedia() {
       const relativePath = path.relative(mediaDir, fullPath);
       const id = `vid-${relativePath.replace(/[^a-zA-Z0-9]/g, '_')}`;
 
-      // Skip if we already have a duration (means we likely scanned it before)
+      // CRITICAL CHECK: Skip if we have data AND we are NOT forcing a refresh
       const existing = checkStmt.get(id);
-      if (existing && existing.duration) continue;
+      if (!forceRefresh && existing && existing.duration) continue;
 
       try {
         // A. THUMBNAIL
@@ -400,36 +406,55 @@ async function scanMedia() {
           }
         }
 
-        // B. DURATION
-        const duration = await getVideoDuration(fullPath);
+        // B. DURATION & METADATA
+        const { duration, tags } = await getVideoMetadata(fullPath);
 
         // C. SUBTITLES
         const subtitlesJson = await processSubtitles(fullPath, id);
 
-        // D. NFO METADATA
         const dir = path.dirname(fullPath);
         const baseName = path.parse(fullPath).name;
-        const filesInDir = fs.readdirSync(dir);
+        
+        // D. METADATA STRATEGY (Waterfall)
+        // 1. Default to "smart" filename parsing
+        const stats = fs.statSync(fullPath);
+        const fileDate = new Date(stats.birthtimeMs).toISOString().split('T')[0];
+        
+        let meta = { 
+            title: baseName, // Default to filename
+            plot: null, 
+            channel: "Local Library", 
+            genre: null, 
+            aired: fileDate,
+            youtubeId: null
+        };
 
-        // This looks through the folder and finds a file that matches 
-        // the name regardless of BIG or small letters
+        // 2. Override with Embedded Tags (if they exist)
+        if (tags.title) meta.title = tags.title;
+        if (tags.description || tags.comment || tags.synopsis) meta.plot = tags.description || tags.comment || tags.synopsis;
+        if (tags.genre) meta.genre = tags.genre;
+        if (tags.artist || tags.album_artist || tags.composer) meta.channel = tags.artist || tags.album_artist || tags.composer;
+        if (tags.date || tags.creation_time) {
+            const rawDate = tags.date || tags.creation_time;
+            if (rawDate.includes('-')) meta.aired = rawDate.split('T')[0];
+        }
+
+        // 3. Override with NFO (Highest Priority)
+        const filesInDir = fs.readdirSync(dir);
         const actualNfoFile = filesInDir.find(f =>
           f.toLowerCase() === `${baseName.toLowerCase()}.nfo`
         );
-
         const nfoPath = actualNfoFile ? path.join(dir, actualNfoFile) : null;
-        const stats = fs.statSync(fullPath);
-        const fileDate = new Date(stats.birthtimeMs).toISOString().split('T')[0];
-        let meta = { plot: null, channel: null, genre: null, aired: fileDate }; // Default to file date 
 
         if (fs.existsSync(nfoPath)) {
           const parsed = parseNfo(nfoPath);
           if (parsed) {
-            meta = {
-              ...parsed,
-              // Use NFO date if it exists, otherwise use the file date 
-              aired: parsed.aired ? parsed.aired.split(' ')[0] : fileDate
-            };
+            if (parsed.title) meta.title = parsed.title;
+            if (parsed.plot) meta.plot = parsed.plot;
+            if (parsed.channel) meta.channel = parsed.channel;
+            if (parsed.genre) meta.genre = parsed.genre;
+            if (parsed.aired) meta.aired = parsed.aired.split(' ')[0];
+            if (parsed.youtubeId) meta.youtubeId = parsed.youtubeId;
           }
         }
 
@@ -442,11 +467,11 @@ async function scanMedia() {
           thumbUrl,
           subtitlesJson,
           meta.plot,
-          meta.channel || "Local Library",
+          meta.channel,
           meta.genre,
           meta.aired,
           channelAvatarUrl,
-          meta.title || path.basename(fullPath, path.extname(fullPath)),
+          meta.title,
           meta.youtubeId || null,
           id
         );
@@ -454,7 +479,8 @@ async function scanMedia() {
       } catch (e) {
         console.error(`Failed to process metadata for ${id}`, e);
       }
-    }
+    } // <--- This correctly closes the 'for' loop now
+
     console.log(`Deep scan complete.`);
   } catch (e) {
     console.error("Scan failed:", e);
@@ -935,9 +961,14 @@ app.post('/api/scan', (req, res) => {
   if (isScanning) {
     return res.status(409).json({ error: "Scan already in progress" });
   }
-  // Run in background, don't await
-  scanMedia();
-  res.json({ success: true, message: "Scan started" });
+  
+  // Check if frontend asked for a 'full' scan
+  const isFullScan = req.body.type === 'full';
+  
+  // Run in background
+  scanMedia(isFullScan);
+  
+  res.json({ success: true, message: isFullScan ? "Full scan started" : "Quick scan started" });
 });
 
 // --- GRACEFUL SHUTDOWN ---
