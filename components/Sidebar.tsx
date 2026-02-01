@@ -116,20 +116,23 @@ const Sidebar: React.FC<SidebarProps> = ({
             {playlists.length === 0 && (
               <div className="px-4 py-2 text-sm text-glass-subtext italic opacity-50">No playlists</div>
             )}
-            {playlists.map(playlist => (
-              <div
-                key={playlist.id}
-                onClick={() => onSelectPlaylist(playlist.id)}
-                className={`flex items-center gap-3 px-4 py-2.5 rounded-xl cursor-pointer transition-all duration-200 truncate group ${viewState === ViewState.PLAYLIST && selectedPlaylistId === playlist.id
-                    ? 'bg-white/10 text-white border border-white/5 shadow-inner'
-                    : 'text-glass-subtext hover:bg-white/5 hover:text-white'
-                  }`}
-              >
-                <div className={`${viewState === ViewState.PLAYLIST && selectedPlaylistId === playlist.id ? 'text-brand-primary' : 'opacity-70 group-hover:opacity-100'}`}>
-                  <PlaylistIcon />
-                </div>
-                <span className="text-sm font-medium truncate">{playlist.name}</span>
-              </div>
+            {/* FIX: Filter out Watch Later so it doesn't show up twice */}
+            {playlists
+                .filter(p => p.name !== 'Watch Later')
+                .map(playlist => (
+                  <div
+                    key={playlist.id}
+                    onClick={() => onSelectPlaylist(playlist.id)}
+                    className={`flex items-center gap-3 px-4 py-2.5 rounded-xl cursor-pointer transition-all duration-200 truncate group ${viewState === ViewState.PLAYLIST && selectedPlaylistId === playlist.id
+                        ? 'bg-white/10 text-white border border-white/5 shadow-inner'
+                        : 'text-glass-subtext hover:bg-white/5 hover:text-white'
+                      }`}
+                  >
+                    <div className={`${viewState === ViewState.PLAYLIST && selectedPlaylistId === playlist.id ? 'text-brand-primary' : 'opacity-70 group-hover:opacity-100'}`}>
+                      <PlaylistIcon />
+                    </div>
+                    <span className="text-sm font-medium truncate">{playlist.name}</span>
+                  </div>
             ))}
           </div>
 

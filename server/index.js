@@ -527,15 +527,13 @@ app.get('/api/discovery/random', (req, res) => {
 });
 
 // --- VIDEOS (Paginated) ---
-// --- VIDEOS (Paginated) ---
 app.get('/api/videos', (req, res) => {
-  // NEW: Add 'history' to the destructuring
-  const { page, limit, folder, sort, search, hideHidden, favorites, history } = req.query; 
+  const { page, limit, folder, sort, search, hideHidden, favorites, history, playlist } = req.query; // Added 'playlist'
   const offset = (parseInt(page) - 1) * parseInt(limit);
 
-  let orderBy = 'release_date DESC'; // Default
-
-  // Map the frontend SortOption to SQL commands
+  let orderBy = 'release_date DESC';
+  
+  // Standard Sorts
   if (sort === 'Name (A-Z)') orderBy = 'name ASC';
   if (sort === 'Name (Z-A)') orderBy = 'name DESC';
   if (sort === 'Date Added (Newest)') orderBy = 'created_at DESC';
@@ -543,29 +541,43 @@ app.get('/api/videos', (req, res) => {
   if (sort === 'Air Date (Newest)') orderBy = 'release_date DESC';
   if (sort === 'Air Date (Oldest)') orderBy = 'release_date ASC';
 
-  // Base Query Structure
   let countQuery = 'SELECT COUNT(*) as total FROM videos';
-  let queryStr = 'SELECT videos.* FROM videos'; // Default select
+  let queryStr = 'SELECT videos.* FROM videos';
   let whereClause = '';
   let params = [];
-
-  // 1. Build the Filter (Where)
   const conditions = [];
 
-  if (hideHidden === 'true') {
-    conditions.push("(filename NOT LIKE '.%' AND folder NOT LIKE '.%' AND folder NOT LIKE '%/.%')");
+  // --- 1. FILTER LOGIC ---
+  if (playlist) {
+    // JOIN allows us to only fetch videos linked to this playlist
+    queryStr = 'SELECT videos.*, playlist_videos.added_at FROM videos JOIN playlist_videos ON videos.id = playlist_videos.video_id';
+    countQuery = 'SELECT COUNT(*) as total FROM videos JOIN playlist_videos ON videos.id = playlist_videos.video_id';
+    
+    conditions.push('playlist_videos.playlist_id = ?');
+    params.push(playlist);
+    
+    // Override sort to show most recently added to playlist first
+    orderBy = 'playlist_videos.added_at DESC';
+  } 
+  else if (history === 'true') {
+    queryStr = 'SELECT videos.*, history.watched_at FROM videos JOIN history ON videos.id = history.video_id';
+    countQuery = 'SELECT COUNT(*) as total FROM videos JOIN history ON videos.id = history.video_id';
+    orderBy = 'history.watched_at DESC';
+  }
+  else {
+    // Standard filters only apply if NOT in history/playlist mode
+    if (hideHidden === 'true') {
+      // Robust hidden check (Files AND Folders)
+      conditions.push("(filename NOT LIKE '.%' AND folder NOT LIKE '.%' AND folder NOT LIKE '%/.%')");
+    }
+    if (favorites === 'true') conditions.push('is_favorite = 1');
+    if (folder) {
+        conditions.push('(folder = ? OR folder LIKE ?)');
+        params.push(folder, `${folder}/%`);
+    }
   }
 
-  if (favorites === 'true') {
-    conditions.push('is_favorite = 1');
-  }
-
-  if (folder) {
-    conditions.push('(folder = ? OR folder LIKE ?)');
-    params.push(folder, `${folder}/%`);
-  }
-
-  // Search Logic
+  // --- 2. SEARCH (Applies to all views) ---
   if (search) {
     const tokens = search.trim().split(/\s+/);
     tokens.forEach(token => {
@@ -574,22 +586,8 @@ app.get('/api/videos', (req, res) => {
     });
   }
 
-  // 2. HISTORY MODE (The Fix)
-  // If requesting history, we must JOIN the history table and Sort by watched_at
-  if (history === 'true') {
-    // Override the base selection to include history data
-    queryStr = 'SELECT videos.*, history.watched_at FROM videos JOIN history ON videos.id = history.video_id';
-    countQuery = 'SELECT COUNT(*) as total FROM videos JOIN history ON videos.id = history.video_id';
-    
-    // Force the sort order to be "Recently Watched"
-    orderBy = 'history.watched_at DESC';
-  }
+  if (conditions.length > 0) whereClause = ' WHERE ' + conditions.join(' AND ');
 
-  if (conditions.length > 0) {
-    whereClause = ' WHERE ' + conditions.join(' AND ');
-  }
-
-  // 3. Assemble Final Query
   const finalQuery = `${queryStr} ${whereClause} ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
   const finalCountQuery = `${countQuery} ${whereClause}`;
 
@@ -599,19 +597,13 @@ app.get('/api/videos', (req, res) => {
 
     const videos = db.prepare(finalQuery).all(...params, limit, offset);
 
+    // Format output
     const formatted = videos.map(v => ({
       ...v,
       isFavorite: Boolean(v.is_favorite),
-      viewsCount: v.views,
       views: `${v.views} views`,
-      timeAgo: v.release_date
-        ? new Date(v.release_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })
-        : new Date(v.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-      thumbnail: v.thumbnail || null,
+      timeAgo: v.release_date || new Date(v.created_at).toLocaleDateString(),
       durationStr: formatDuration(v.duration),
-      duration: v.duration,
-      playbackPosition: v.playback_position || 0,
-      channelAvatar: v.channel_avatar
     }));
 
     res.json({
