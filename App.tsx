@@ -77,16 +77,12 @@ const AppContent = () => {
     const [history, setHistory] = useState<string[]>([]);
     const [playlists, setPlaylists] = useState<Playlist[]>([]);
 
-    // Selection State
-    const [selectedVideoIds, setSelectedVideoIds] = useState<Set<string>>(new Set());
-    const [showBulkPlaylistMenu, setShowBulkPlaylistMenu] = useState(false);
-
     // ----------------------------------------------------------------
     // DATABASE CONNECTION CODE
     // ----------------------------------------------------------------
 
     // NEW: Added searchTerm argument (defaults to empty string)
-    const fetchVideos = async (page = 1, folder: string | null = null, reset = false, search = '', favoritesOnly = false, historyOnly = false) => {
+    const fetchVideos = async (page = 1, folder: string | null = null, reset = false, search = '', favoritesOnly = false, historyOnly = false, playlistId: string | null = null) => {
         // Prevent duplicate loads (only if not resetting)
         if (!reset && (pagination.isLoading || !pagination.hasMore)) return;
 
@@ -112,6 +108,7 @@ const AppContent = () => {
             if (search) url.searchParams.set('search', search);
             if (favoritesOnly) url.searchParams.set('favorites', 'true');
             if (historyOnly) url.searchParams.set('history', 'true');
+            if (playlistId) url.searchParams.set('playlist', playlistId);
 
             // Pass the "signal" to fetch so we can cancel it
             const response = await fetch(url.toString(), { signal: controller.signal });
@@ -258,14 +255,16 @@ const AppContent = () => {
     // UPDATED: Handle data fetching when ViewState or Folder changes
     useEffect(() => {
         const isFavorites = viewState === ViewState.FAVORITES;
-        const isHistory = viewState === ViewState.HISTORY; // NEW
+        const isHistory = viewState === ViewState.HISTORY;
+        // 1. Determine the playlist ID if we are in playlist mode
+        const currentPlaylistId = viewState === ViewState.PLAYLIST ? selectedPlaylistId : null;
 
         // Debounce search
         const timeoutId = setTimeout(() => {
-            // Updated to pass both flags
-            fetchVideos(1, selectedFolder, true, searchTerm, isFavorites, isHistory);
+            // 2. PASS currentPlaylistId as the 7th argument
+            fetchVideos(1, selectedFolder, true, searchTerm, isFavorites, isHistory, currentPlaylistId);
 
-            if (selectedFolder && !isFavorites && !isHistory) {
+            if (selectedFolder && !isFavorites && !isHistory && !currentPlaylistId) {
                 fetchFolderList(selectedFolder);
             } else {
                 setCurrentSubFolders([]);
@@ -273,7 +272,7 @@ const AppContent = () => {
         }, 300);
 
         return () => clearTimeout(timeoutId);
-    }, [selectedFolder, searchTerm, viewState]);
+    }, [selectedFolder, searchTerm, viewState, selectedPlaylistId]); // <--- 3. ADD selectedPlaylistId here
 
     // --- ROUTER SYNC LOGIC (FIXED) ---
     useEffect(() => {
@@ -284,27 +283,25 @@ const AppContent = () => {
         if (path.startsWith('/watch/')) {
             const videoId = path.split('/')[2];
 
-            // A. Check if we have it in memory
+            // Try to find the video in our currently loaded list first
             const vid = allVideos.find(v => v.id === videoId) ||
                 recommendedVideos.find(v => v.id === videoId);
 
             if (vid) {
                 setCurrentVideo(vid);
                 setViewState(ViewState.WATCH);
-                setIsSidebarOpen(false);
+                setIsSidebarOpen(false); // Close sidebar for cinema mode
             } else {
-                // B. CRITICAL FIX: Fetch specific video if not found in list (e.g. on Refresh)
+                // If not in the list (e.g. direct link or refresh), fetch it from API
                 fetch(`/api/videos/${videoId}`)
                     .then(res => res.json())
                     .then(data => {
                         if (data.error) {
-                            console.error("Video not found on server");
-                            navigate('/'); // Send home if invalid ID
+                            navigate('/'); 
                         } else {
-                            // Normalize the data to match your types
                             const videoData = {
                                 ...data,
-                                url: data.path, // server returns path, ui needs url
+                                url: data.path,
                                 subtitles: typeof data.subtitles === 'string' ? JSON.parse(data.subtitles) : []
                             };
                             setCurrentVideo(videoData);
@@ -315,7 +312,21 @@ const AppContent = () => {
                     .catch(e => console.error("Single video fetch failed", e));
             }
         }
-        // 2. PLAYLIST PAGE
+
+        // 2. WATCH LATER ROUTE
+        else if (path === '/watch-later') {
+            const wl = playlists.find(p => p.name === 'Watch Later');
+            if (wl) {
+                setSelectedPlaylistId(wl.id);
+                setViewState(ViewState.PLAYLIST);
+            } else {
+                setViewState(ViewState.PLAYLIST);
+                setSelectedPlaylistId('watch-later-placeholder');
+            }
+            setCurrentVideo(null);
+        }
+
+        // 3. STANDARD PLAYLIST ROUTE
         else if (path.startsWith('/playlist/')) {
             const playlistId = path.split('/')[2];
             setSelectedPlaylistId(playlistId);
@@ -323,33 +334,35 @@ const AppContent = () => {
             setCurrentVideo(null);
         }
 
-        // NEW: FAVORITES PAGE
+        // 4. FAVORITES
         else if (path === '/favorites') {
             setViewState(ViewState.FAVORITES);
             setCurrentVideo(null);
-            // We don't fetch here directly; the useEffect below handles the data fetch
-            // based on the viewState change.
+            setSelectedPlaylistId(null); // <--- FIX: Clear Playlist ID
         }
 
-        // NEW: HISTORY PAGE
+        // 5. HISTORY
         else if (path === '/history') {
             setViewState(ViewState.HISTORY);
             setCurrentVideo(null);
+            setSelectedPlaylistId(null); // <--- FIX: Clear Playlist ID
         }
 
-        // 3. HOME / FOLDER PAGE
+        // 6. HOME / FOLDER PAGE
         else {
             setViewState(ViewState.HOME);
             setCurrentVideo(null);
+            setSelectedPlaylistId(null); // <--- FIX: Clear Playlist ID
+
             if (queryFolder) setSelectedFolder(queryFolder);
             else setSelectedFolder(null);
         }
-    }, [location.pathname, searchParams, allVideos, recommendedVideos]);
+    }, [location.pathname, searchParams, allVideos, playlists, recommendedVideos]);
 
     const handleScanLibrary = async (type: 'quick' | 'full' = 'quick') => {
         setIsScanning(true);
         try {
-            const res = await fetch('/api/scan', { 
+            const res = await fetch('/api/scan', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ type })
@@ -382,7 +395,6 @@ const AppContent = () => {
         setFolderStructure(structure);
         setViewState(ViewState.HOME);
         setCurrentVideo(null);
-        setSelectedVideoIds(new Set());
     };
 
     const handleLoadDemo = () => {
@@ -399,7 +411,6 @@ const AppContent = () => {
             { id: 'p1', name: 'Watch Later', videoIds: [] },
             { id: 'p2', name: 'Cool Animations', videoIds: ['mock-1', 'mock-2'] }
         ]);
-        setSelectedVideoIds(new Set());
     };
 
     // --- UPDATED NAVIGATION LOGIC ---
@@ -414,9 +425,12 @@ const AppContent = () => {
         } else if (viewState === ViewState.HISTORY) {
             // CHANGED: We now trust the server to return the correct history list.
             // No need to map/filter manually anymore.
-            videos = allVideos; 
+            videos = allVideos;
         } else if (viewState === ViewState.PLAYLIST && selectedPlaylistId) {
-            videos = playlist ? playlist.videoIds.map(id => allVideos.find(v => v.id === id)).filter(Boolean) as VideoFile[] : [];
+            // FIX: Trust the server! 
+            // The fetchVideos function already asked the backend for *only* this playlist's videos.
+            // So 'allVideos' IS the playlist. No manual filtering needed.
+            videos = allVideos;
         }
 
         // 2. FOLDER NAVIGATION
@@ -467,48 +481,6 @@ const AppContent = () => {
 
         // 2. Navigate to the Watch URL
         navigate(`/watch/${video.id}`);
-    };
-
-
-    const toggleSelection = (id: string) => {
-        setSelectedVideoIds(prev => {
-            const next = new Set(prev);
-            if (next.has(id)) {
-                next.delete(id);
-            } else {
-                next.add(id);
-            }
-            return next;
-        });
-    };
-
-    const clearSelection = () => {
-        setSelectedVideoIds(new Set());
-        setShowBulkPlaylistMenu(false);
-    };
-
-    const handleBulkAddToPlaylist = async (playlistId: string) => {
-        // NEW: Convert the 'Set' of IDs into an array so we can loop through them
-        const videoIdsArray = Array.from(selectedVideoIds);
-
-        // NEW: For every video ID you selected, tell the database to add it to the playlist
-        for (const videoId of videoIdsArray) {
-            await fetch(`/api/playlists/${playlistId}/videos`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ videoId })
-            });
-        }
-
-        // Update the screen so the user sees the videos appear in the playlist
-        setPlaylists(prev => prev.map(p => {
-            if (p.id === playlistId) {
-                const newIds = new Set([...p.videoIds, ...videoIdsArray]);
-                return { ...p, videoIds: Array.from(newIds) };
-            }
-            return p;
-        }));
-        clearSelection();
     };
 
     const handleNextVideo = () => {
@@ -673,7 +645,12 @@ const AppContent = () => {
     };
 
     const handleSidebarPlaylistSelect = (id: string) => {
-        navigate(`/playlist/${id}`);
+        const playlist = playlists.find(p => p.id === id);
+        if (playlist && playlist.name === 'Watch Later') {
+            navigate('/watch-later');
+        } else {
+            navigate(`/playlist/${id}`);
+        }
     };
 
     // Removed the problematic legacy pushState handlers here
@@ -875,15 +852,21 @@ const AppContent = () => {
                                 <div className="pb-20">
                                     {/* Static Row 1 & 2 (Changed to 3 cols to match bottom) */}
                                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-10 gap-x-6 mb-10 pr-4">
-                                        {displayedVideos.slice(0, 6).map(video => (
-                                            <VideoCard
-                                                key={video.id}
-                                                video={video}
-                                                isSelected={selectedVideoIds.has(video.id)}
-                                                onSelect={() => toggleSelection(video.id)}
-                                                onClick={() => handleVideoSelect(video)}
-                                            />
-                                        ))}
+                                        {displayedVideos.slice(0, 6).map(video => {
+                                            // Check if this video is in the Watch Later playlist
+                                            const watchLaterList = playlists.find(p => p.name === 'Watch Later');
+                                            const isInWatchLater = watchLaterList?.videoIds.includes(video.id) || false;
+
+                                            return (
+                                                <VideoCard
+                                                    key={video.id}
+                                                    video={video}
+                                                    isInWatchLater={isInWatchLater}
+                                                    onToggleWatchLater={() => handleToggleWatchLater(video.id)}
+                                                    onClick={() => handleVideoSelect(video)}
+                                                />
+                                            );
+                                        })}
                                     </div>
 
                                     {/* The New Horizontal Discovery Row */}
@@ -896,22 +879,32 @@ const AppContent = () => {
 
                                     {/* The Remaining Library - FIXED: uses customScrollParent */}
                                     {mainScrollRef && displayedVideos.length > 6 && (
-                                        <div className="w-full">
+                                        <div className="w-full h-full min-h-[500px]"> {/* Container needs height */}
                                             <VirtuosoGrid
-                                                customScrollParent={mainScrollRef}
+                                                style={{ height: '100%', width: '100%' }}
                                                 data={displayedVideos.slice(6)}
-                                                endReached={() => fetchVideos(pagination.page, selectedFolder, false, searchTerm)}
-                                                overscan={200}
-                                                components={virtuosoComponents} // <--- USE THE MEMOIZED VARIABLE
-                                                itemContent={(index, video) => (
-                                                    <VideoCard
-                                                        key={video.id}
-                                                        video={video}
-                                                        isSelected={selectedVideoIds.has(video.id)}
-                                                        onSelect={() => toggleSelection(video.id)}
-                                                        onClick={() => handleVideoSelect(video)}
-                                                    />
-                                                )}
+                                                components={virtuosoComponents}
+                                                customScrollParent={mainScrollRef}
+                                                endReached={() => {
+                                                    if (pagination.hasMore && !pagination.isLoading) {
+                                                        fetchVideos(pagination.page, selectedFolder, false, searchTerm);
+                                                    }
+                                                }}
+                                                itemContent={(index, video) => {
+                                                    // Check if this video is in the Watch Later playlist
+                                                    const watchLaterList = playlists.find(p => p.name === 'Watch Later');
+                                                    const isInWatchLater = watchLaterList?.videoIds.includes(video.id) || false;
+
+                                                    return (
+                                                        <VideoCard
+                                                            key={video.id}
+                                                            video={video}
+                                                            isInWatchLater={isInWatchLater}
+                                                            onToggleWatchLater={() => handleToggleWatchLater(video.id)}
+                                                            onClick={() => handleVideoSelect(video)}
+                                                        />
+                                                    );
+                                                }}
                                             />
                                         </div>
                                     )}
