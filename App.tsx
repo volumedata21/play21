@@ -31,6 +31,7 @@ const AppContent = () => {
     const [appSettings, setAppSettings] = useState({ hideHiddenFiles: true });
     const [currentSubFolders, setCurrentSubFolders] = useState<string[]>([]);
     const [isFoldersExpanded, setIsFoldersExpanded] = useState(false);
+    const abortControllerRef = useRef<AbortController | null>(null);
     const virtuosoRef = useRef<any>(null);
 
     const [recommendedVideos, setRecommendedVideos] = useState<VideoFile[]>([]);
@@ -85,8 +86,17 @@ const AppContent = () => {
 
     // NEW: Added searchTerm argument (defaults to empty string)
     const fetchVideos = async (page = 1, folder: string | null = null, reset = false, search = '', favoritesOnly = false) => {
-        // Prevent duplicate loads
+        // Prevent duplicate loads (only if not resetting)
         if (!reset && (pagination.isLoading || !pagination.hasMore)) return;
+
+        // CRITICAL FIX: Cancel any previous pending request
+        if (reset && abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+
+        // Create a new controller for this specific request
+        const controller = new AbortController();
+        if (reset) abortControllerRef.current = controller;
 
         setPagination(prev => ({ ...prev, isLoading: true }));
 
@@ -98,15 +108,13 @@ const AppContent = () => {
             url.searchParams.set('hideHidden', appSettings.hideHiddenFiles.toString());
 
             if (folder) url.searchParams.set('folder', folder);
-            // NEW: Pass the search term to the server
             if (search) url.searchParams.set('search', search);
             if (favoritesOnly) url.searchParams.set('favorites', 'true');
 
-            const response = await fetch(url.toString());
+            // Pass the "signal" to fetch so we can cancel it
+            const response = await fetch(url.toString(), { signal: controller.signal });
             const data = await response.json();
 
-            // Process subtitles (safe parsing)
-            // Process subtitles and database favorites
             const newVideos = data.videos.map((v: any) => {
                 let parsedSubtitles = [];
                 try {
@@ -117,7 +125,6 @@ const AppContent = () => {
                     ...v,
                     url: v.path,
                     subtitles: parsedSubtitles,
-                    // NEW: Convert SQLite 1/0 to true/false so the UI stays starred
                     isFavorite: Boolean(v.is_favorite)
                 };
             });
@@ -131,13 +138,12 @@ const AppContent = () => {
                     isLoading: false
                 });
             } else {
-                // CRITICAL FIX: Filter out duplicates to prevent React crash
                 setAllVideos(prev => {
                     const existingIds = new Set(prev.map(v => v.id));
                     const uniqueNewVideos = newVideos.filter((v: any) => !existingIds.has(v.id));
                     return [...prev, ...uniqueNewVideos];
                 });
-
+                
                 setPagination(prev => ({
                     ...prev,
                     page: prev.page + 1,
@@ -145,7 +151,10 @@ const AppContent = () => {
                     isLoading: false
                 }));
             }
-        } catch (error) {
+        } catch (error: any) {
+            // Ignore errors caused by us cancelling the request
+            if (error.name === 'AbortError') return;
+            
             console.log("Backend error", error);
             setPagination(prev => ({ ...prev, isLoading: false }));
         }

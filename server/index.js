@@ -605,47 +605,57 @@ app.get('/api/videos/:id', (req, res) => {
   }
 });
 
-// --- STREAMING ROUTE ---
-app.get('/api/stream/:id', (req, res) => {
-  const video = db.prepare('SELECT path FROM videos WHERE id = ?').get(req.params.id);
-  if (!video) return res.status(404).send('Not found');
+// --- STREAMING ROUTE (ASYNC / NON-BLOCKING) ---
+app.get('/api/stream/:id', async (req, res) => {
+  try {
+    const video = db.prepare('SELECT path FROM videos WHERE id = ?').get(req.params.id);
+    if (!video) return res.status(404).send('Not found');
 
-  // Handle both absolute paths and relative /media/ paths
-  let fullPath = video.path;
-  if (video.path.startsWith('/media')) {
-    const relPath = decodeURIComponent(video.path.replace(/^\/media\//, ''));
-    fullPath = path.join(mediaDir, relPath);
-  }
+    // Handle both absolute paths and relative /media/ paths
+    let fullPath = video.path;
+    if (video.path.startsWith('/media')) {
+      const relPath = decodeURIComponent(video.path.replace(/^\/media\//, ''));
+      fullPath = path.join(mediaDir, relPath);
+    }
 
-  if (!fs.existsSync(fullPath)) return res.status(404).send('File missing');
+    // CRITICAL FIX: Use Async check to prevent server freezing during playback
+    try {
+      await fs.promises.access(fullPath, fs.constants.F_OK);
+    } catch (e) {
+      return res.status(404).send('File missing');
+    }
 
-  const stat = fs.statSync(fullPath);
-  const fileSize = stat.size;
-  const range = req.headers.range;
+    const stat = await fs.promises.stat(fullPath);
+    const fileSize = stat.size;
+    const range = req.headers.range;
 
-  if (range) {
-    const parts = range.replace(/bytes=/, "").split("-");
-    const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-    const chunksize = (end - start) + 1;
-    const file = fs.createReadStream(fullPath, { start, end });
-    
-    const head = {
-      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-      'Accept-Ranges': 'bytes',
-      'Content-Length': chunksize,
-      'Content-Type': 'video/mp4',
-    };
-    
-    res.writeHead(206, head);
-    file.pipe(res);
-  } else {
-    const head = {
-      'Content-Length': fileSize,
-      'Content-Type': 'video/mp4',
-    };
-    res.writeHead(200, head);
-    fs.createReadStream(fullPath).pipe(res);
+    if (range) {
+      const parts = range.replace(/bytes=/, "").split("-");
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunksize = (end - start) + 1;
+      const file = fs.createReadStream(fullPath, { start, end });
+      
+      const head = {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunksize,
+        'Content-Type': 'video/mp4',
+      };
+      
+      res.writeHead(206, head);
+      file.pipe(res);
+    } else {
+      const head = {
+        'Content-Length': fileSize,
+        'Content-Type': 'video/mp4',
+      };
+      res.writeHead(200, head);
+      fs.createReadStream(fullPath).pipe(res);
+    }
+  } catch (err) {
+    console.error("Stream error:", err);
+    if (!res.headersSent) res.status(500).send('Stream Error');
   }
 });
 
