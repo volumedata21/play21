@@ -54,7 +54,8 @@ const AppContent = () => {
     useEffect(() => {
         const fetchDiscovery = async () => {
             try {
-                const res = await fetch('/api/discovery/random');
+                // Pass the current setting to the backend
+                const res = await fetch(`/api/discovery/random?hideHidden=${appSettings.hideHiddenFiles}`);
                 const data = await res.json();
                 if (data.success) {
                     const mapped = data.videos.map((v: any) => ({
@@ -70,7 +71,7 @@ const AppContent = () => {
             }
         };
         fetchDiscovery();
-    }, []);
+    }, [appSettings.hideHiddenFiles]); // Add this dependency so it refreshes on toggle
 
     // Features State
     const [history, setHistory] = useState<string[]>([]);
