@@ -86,6 +86,37 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     const videoRef = useRef<HTMLVideoElement>(null);
 
+    const lastTapRef = useRef<{ time: number, x: number } | null>(null);
+
+    const handleTouchEnd = (e: React.TouchEvent) => {
+        const now = Date.now();
+        // Use 'touches' if changedTouches is empty, just to be safe
+        const touch = e.changedTouches[0] || e.touches[0];
+        if (!touch) return;
+        
+        const touchX = touch.clientX;
+        const screenWidth = window.innerWidth;
+
+        if (lastTapRef.current && (now - lastTapRef.current.time < 300)) {
+            // DOUBLE TAP DETECTED
+            e.preventDefault();
+            
+            // Determine side: Left 30% vs Right 30%
+            if (touchX < screenWidth * 0.3) {
+                // Left Side -> Rewind
+                if (videoRef.current) videoRef.current.currentTime -= 10;
+            } else if (touchX > screenWidth * 0.7) {
+                // Right Side -> Forward
+                if (videoRef.current) videoRef.current.currentTime += 10;
+            }
+            
+            lastTapRef.current = null; // Reset
+        } else {
+            // First tap
+            lastTapRef.current = { time: now, x: touchX };
+        }
+    };
+
     // Check if current thumbnail is custom (saved as -custom.jpg) or temporary (data:image)
     // FIXED: Only declared once now
     const isCustomThumbnail = video.thumbnail && (video.thumbnail.includes('-custom.jpg') || video.thumbnail.startsWith('data:'));
@@ -349,8 +380,11 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <div className="absolute -inset-1 bg-gradient-to-r from-brand-primary via-brand-secondary to-brand-accent rounded-2xl blur-2xl opacity-20 group-hover:opacity-30 transition-opacity duration-1000 hidden md:block"></div>
                     
                     {/* 2. CHANGED: rounded-none on mobile, md:rounded-2xl on desktop */}
-                    <div className="relative w-full aspect-video bg-black rounded-none md:rounded-2xl overflow-hidden shadow-2xl ring-0 md:ring-1 ring-white/10 flex items-center justify-center">
-
+                    {/* 2. CHANGED: rounded-none on mobile, md:rounded-2xl on desktop */}
+                    <div 
+                        className="relative w-full aspect-video bg-black rounded-none md:rounded-2xl overflow-hidden shadow-2xl ring-0 md:ring-1 ring-white/10 flex items-center justify-center"
+                        onTouchEnd={handleTouchEnd} 
+                    >
                         {/* Dynamic Background */}
                         {video.thumbnail && (
                             <div
@@ -362,7 +396,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         {/* Video Element */}
                         <video
                             ref={videoRef}
-                            src={`/api/stream/${video.id}`}
+                            src={isTranscoding ? `/api/stream/transcode/${video.id}` : `/api/stream/${video.id}`}
                             controls
                             autoPlay
                             crossOrigin="anonymous"

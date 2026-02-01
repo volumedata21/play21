@@ -6,27 +6,33 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 
-# Copy everything else, including index.html and tsconfig.json
+# Copy source code and build
 COPY . .
-
-# Run the build [cite: 2]
-RUN npm run build 
+RUN npm run build
 
 # Stage 2: Final Production Image
 FROM node:20-slim
+
+# 1. Install FFmpeg for video processing/transcoding
 RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
+# 2. Install ONLY production dependencies (keeps image small)
 COPY package*.json ./
 RUN npm install --production
 
-# Copy the built frontend from Stage 1
+# 3. Copy the server code specifically
+# (We do NOT use 'COPY . .' here to avoid overwriting dependencies)
+COPY server ./server
+
+# 4. Copy the built frontend from Stage 1
 COPY --from=builder /app/dist ./dist
 
-# Copy the server and remaining files 
-COPY . .
+# 5. Create necessary data directories
+RUN mkdir -p media data
 
 EXPOSE 3001
 
-# Use JSON array format for CMD to fix the warning and handle OS signals correctly
+# Start the server
 CMD ["node", "server/index.js"]

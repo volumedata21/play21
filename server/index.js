@@ -53,6 +53,10 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_folder ON videos(folder);
   CREATE INDEX IF NOT EXISTS idx_created ON videos(created_at);
+
+  CREATE INDEX IF NOT EXISTS idx_release_date ON videos(release_date);
+  CREATE INDEX IF NOT EXISTS idx_views ON videos(views);
+  CREATE INDEX IF NOT EXISTS idx_is_favorite ON videos(is_favorite);
 `);
 
 // Settings Table (NEW)
@@ -338,31 +342,36 @@ async function scanMedia() {
       WHERE id = ?
     `);
 
-    // --- PHASE 1: INSTANT INSERT ---
-    for (const fullPath of validFiles) {
-      const relativePath = path.relative(mediaDir, fullPath);
-      // Create ID from path
-      const id = `vid-${relativePath.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    // --- PHASE 1: INSTANT INSERT (OPTIMIZED) ---
+    // We wrap the loop in a transaction to prevent database locking and speed up inserts 100x
+    const runPhase1 = db.transaction((filesToScan) => {
+      for (const fullPath of filesToScan) {
+        const relativePath = path.relative(mediaDir, fullPath);
+        const id = `vid-${relativePath.replace(/[^a-zA-Z0-9]/g, '_')}`;
 
-      const existing = checkStmt.get(id);
-      if (!existing) {
-        const folderName = path.dirname(relativePath) === '.' ? 'Local Library' : path.dirname(relativePath);
-        const webPath = '/media/' + relativePath.split(path.sep).map(encodeURIComponent).join('/');
-        const stats = fs.statSync(fullPath);
-        const tempDate = new Date(stats.birthtimeMs).toISOString().split('T')[0];
+        const existing = checkStmt.get(id);
+        if (!existing) {
+          const folderName = path.dirname(relativePath) === '.' ? 'Local Library' : path.dirname(relativePath);
+          const webPath = '/media/' + relativePath.split(path.sep).map(encodeURIComponent).join('/');
+          const stats = fs.statSync(fullPath);
+          const tempDate = new Date(stats.birthtimeMs).toISOString().split('T')[0];
 
-        // Insert with bare minimum data
-        insertStmt.run(
-          id,
-          path.basename(fullPath, path.extname(fullPath)), // Display Name
-          path.basename(fullPath), // Filename
-          folderName,
-          webPath,
-          Math.floor(stats.birthtimeMs),
-          tempDate
-        );
+          insertStmt.run(
+            id,
+            path.basename(fullPath, path.extname(fullPath)), 
+            path.basename(fullPath), 
+            folderName,
+            webPath,
+            Math.floor(stats.birthtimeMs),
+            tempDate
+          );
+        }
       }
-    }
+    });
+
+    // Run the transaction
+    runPhase1(validFiles);
+    
     console.log("Phase 1 complete: Videos are visible in UI.");
 
     // --- PHASE 2: DEEP SCAN (Duration, Thumbs, NFO) ---
@@ -481,7 +490,7 @@ app.get('/api/discovery/random', (req, res) => {
 // --- VIDEOS (Paginated) ---
 app.get('/api/videos', (req, res) => {
   // NEW: Add 'search' to the destructured variables
-  const { page, limit, folder, sort, search, hideHidden } = req.query; 
+  const { page, limit, folder, sort, search, hideHidden, favorites } = req.query; 
   const offset = (parseInt(page) - 1) * parseInt(limit);
 
   let orderBy = 'release_date DESC'; // Default
@@ -505,10 +514,16 @@ app.get('/api/videos', (req, res) => {
     conditions.push("filename NOT LIKE '.%'"); 
   }
 
+  if (favorites === 'true') {
+    conditions.push('is_favorite = 1');
+  }
+
   if (folder) {
     conditions.push('(folder = ? OR folder LIKE ?)');
     params.push(folder, `${folder}/%`);
   }
+
+  
 
   // NEW: Search Logic (Tokenized)
   if (search) {
@@ -516,8 +531,8 @@ app.get('/api/videos', (req, res) => {
     const tokens = search.trim().split(/\s+/);
     
     tokens.forEach(token => {
-        // For EACH word, we add a rule: 
-        // "This word must exist in either the Name OR the Channel"
+        // CHANGED: We push to conditions individually. 
+        // Since we join with ' AND ' later, this forces EVERY word to be present.
         conditions.push('(name LIKE ? OR channel LIKE ?)'); 
         params.push(`%${token}%`, `%${token}%`);
     });
@@ -563,37 +578,75 @@ app.get('/api/videos', (req, res) => {
   }
 });
 
+// --- GET SINGLE VIDEO METADATA (CRITICAL FOR DIRECT LINKING) ---
+app.get('/api/videos/:id', (req, res) => {
+  try {
+    const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(req.params.id);
+    if (!video) return res.status(404).json({ error: "Video not found" });
+
+    // Format it exactly like the list endpoint
+    const formatted = {
+      ...video,
+      isFavorite: Boolean(video.is_favorite),
+      viewsCount: video.views,
+      views: `${video.views} views`,
+      timeAgo: video.release_date || new Date(video.created_at).toLocaleDateString(),
+      thumbnail: video.thumbnail || null,
+      durationStr: formatDuration(video.duration),
+      channelAvatar: video.channel_avatar,
+      // Ensure path is exposed for the frontend player
+      path: video.path
+    };
+
+    res.json(formatted);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
 // --- STREAMING ROUTE ---
 app.get('/api/stream/:id', (req, res) => {
   const video = db.prepare('SELECT path FROM videos WHERE id = ?').get(req.params.id);
   if (!video) return res.status(404).send('Not found');
 
-  // Convert web path back to file system path
+  // Handle both absolute paths and relative /media/ paths
   let fullPath = video.path;
   if (video.path.startsWith('/media')) {
     const relPath = decodeURIComponent(video.path.replace(/^\/media\//, ''));
     fullPath = path.join(mediaDir, relPath);
   }
 
-  // --- FIX: Check if file exists inside the route ---
-  if (!fs.existsSync(fullPath)) {
-    console.log(`File missing: ${fullPath}. Removing from DB.`);
-    try {
-      db.prepare('DELETE FROM videos WHERE id = ?').run(req.params.id);
-    } catch (e) {
-      console.error("Failed to remove ghost file from DB", e);
-    }
-    return res.status(404).send('File not found on disk');
+  if (!fs.existsSync(fullPath)) return res.status(404).send('File missing');
+
+  const stat = fs.statSync(fullPath);
+  const fileSize = stat.size;
+  const range = req.headers.range;
+
+  if (range) {
+    const parts = range.replace(/bytes=/, "").split("-");
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+    const chunksize = (end - start) + 1;
+    const file = fs.createReadStream(fullPath, { start, end });
+    
+    const head = {
+      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': chunksize,
+      'Content-Type': 'video/mp4',
+    };
+    
+    res.writeHead(206, head);
+    file.pipe(res);
+  } else {
+    const head = {
+      'Content-Length': fileSize,
+      'Content-Type': 'video/mp4',
+    };
+    res.writeHead(200, head);
+    fs.createReadStream(fullPath).pipe(res);
   }
-
-  // This handles the "Range" header automatically
-  res.sendFile(fullPath);
-});
-
-app.post('/api/scan', async (req, res) => {
-  console.log("Manual scan triggered...");
-  await scanMedia();
-  res.json({ success: true, message: "Scan complete" });
 });
 
 // NEW: Toggle Favorite (Persist to DB)
@@ -842,32 +895,50 @@ app.get('/api/stream/transcode/:id', (req, res) => {
   });
 
   // THE MAGIC: FFmpeg with Hardware Acceleration
-  ffmpeg(fullPath)
-    // 1. INPUT OPTIONS
-    // Attempt to use hardware decoding if available (Intel QSV / VAAPI)
-    // If this fails, FFmpeg usually falls back to software automatically
-    .inputOptions([
-      '-hwaccel auto', 
-    ])
-    // 2. OUTPUT OPTIONS
+  const command = ffmpeg(fullPath)
+    .inputOptions(['-hwaccel auto'])
     .outputOptions([
-      '-c:v libx264',      // Video Codec: H.264 (Most compatible)
-      '-preset ultrafast', // Priority: Speed > Compression size
-      '-crf 23',           // Quality: 23 is a good balance
-      '-c:a aac',          // Audio: AAC (Universal)
-      '-b:a 128k',         // Audio Bitrate
-      '-movflags frag_keyframe+empty_moov', // REQUIRED for streaming MP4 to browser
-      '-f mp4'             // Force MP4 format
+      '-c:v libx264',
+      '-preset ultrafast',
+      '-crf 23',
+      '-c:a aac',
+      '-b:a 128k',
+      '-movflags frag_keyframe+empty_moov',
+      '-f mp4'
     ])
-    // 3. PIPE TO BROWSER
     .on('error', (err) => {
-      // Browsers often cut the connection when seeking/closing
       if (err.message !== 'Output stream closed') {
         console.error('Transcoding error:', err);
       }
-    })
-    .pipe(res, { end: true });
+    });
+
+  // CRITICAL FIX: Kill FFmpeg if the user closes the tab or skips video
+  res.on('close', () => {
+    command.kill();
+  });
+
+  command.pipe(res, { end: true });
+  });
+
+  // --- MANUAL SCAN ROUTE ---
+app.post('/api/scan', (req, res) => {
+  if (isScanning) {
+    return res.status(409).json({ error: "Scan already in progress" });
+  }
+  // Run in background, don't await
+  scanMedia();
+  res.json({ success: true, message: "Scan started" });
 });
+
+// --- GRACEFUL SHUTDOWN ---
+const cleanup = () => {
+  console.log('Closing database connection...');
+  db.close();
+  process.exit(0);
+};
+
+process.on('SIGINT', cleanup);
+process.on('SIGTERM', cleanup);
 
 // Run scan on startup
 scanMedia();
