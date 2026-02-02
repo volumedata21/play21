@@ -10,3 +10,6 @@ services:
       - ./data:/app/data
     devices:
       - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
