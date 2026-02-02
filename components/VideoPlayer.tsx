@@ -93,14 +93,14 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         // Use 'touches' if changedTouches is empty, just to be safe
         const touch = e.changedTouches[0] || e.touches[0];
         if (!touch) return;
-        
+
         const touchX = touch.clientX;
         const screenWidth = window.innerWidth;
 
         if (lastTapRef.current && (now - lastTapRef.current.time < 300)) {
             // DOUBLE TAP DETECTED
             e.preventDefault();
-            
+
             // Determine side: Left 30% vs Right 30%
             if (touchX < screenWidth * 0.3) {
                 // Left Side -> Rewind
@@ -109,7 +109,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 // Right Side -> Forward
                 if (videoRef.current) videoRef.current.currentTime += 10;
             }
-            
+
             lastTapRef.current = null; // Reset
         } else {
             // First tap
@@ -152,7 +152,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     e.preventDefault(); // Prevent scrolling down
                     vid.paused ? vid.play() : vid.pause();
                     break;
-                
+
                 case 'f':
                     e.preventDefault();
                     if (document.fullscreenElement) {
@@ -190,7 +190,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     e.preventDefault();
                     vid.muted = !vid.muted;
                     break;
-                
+
                 case 'home':
                     e.preventDefault();
                     vid.currentTime = 0;
@@ -378,12 +378,12 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 {/* Player Container */}
                 <div className="relative group">
                     <div className="absolute -inset-1 bg-gradient-to-r from-brand-primary via-brand-secondary to-brand-accent rounded-2xl blur-2xl opacity-20 group-hover:opacity-30 transition-opacity duration-1000 hidden md:block"></div>
-                    
+
                     {/* 2. CHANGED: rounded-none on mobile, md:rounded-2xl on desktop */}
                     {/* 2. CHANGED: rounded-none on mobile, md:rounded-2xl on desktop */}
-                    <div 
+                    <div
                         className="relative w-full aspect-video bg-black rounded-none md:rounded-2xl overflow-hidden shadow-2xl ring-0 md:ring-1 ring-white/10 flex items-center justify-center"
-                        onTouchEnd={handleTouchEnd} 
+                        onTouchEnd={handleTouchEnd}
                     >
                         {/* Dynamic Background */}
                         {video.thumbnail && (
@@ -405,12 +405,14 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             onError={(e) => {
                                 const target = e.target as HTMLVideoElement;
                                 const error = target.error;
-                                
-                                // Error 4 = MEDIA_ERR_SRC_NOT_SUPPORTED (Format not supported)
-                                if (error && error.code === 4 && !isTranscoding) {
-                                    console.log("Format not supported, switching to transcode stream...");
+
+                                // Check for both Error 4 (Format Not Supported) AND Error 3 (Decode Error)
+                                // Error 3 often happens with high-bitrate files that the browser "thinks" it can play but fails midway.
+                                if (error && (error.code === 4 || error.code === 3) && !isTranscoding) {
+                                    console.log(`Playback error code ${error.code}: switching to transcode stream...`);
                                     setIsTranscoding(true);
-                                    // React will re-render with the new URL automatically
+                                } else {
+                                    console.error("Unrecoverable video error:", error);
                                 }
                             }}
                             onEnded={() => {
@@ -443,12 +445,12 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
                                 {/* The Glass Card */}
                                 <div className="relative w-full max-w-sm mx-4 p-8 rounded-3xl border border-white/10 bg-black/40 shadow-2xl backdrop-blur-md overflow-hidden text-center">
-                                    
+
                                     {/* Top Shine Line */}
                                     <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
 
                                     <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-brand-primary mb-4 drop-shadow-sm">Up Next</h2>
-                                    
+
                                     <p className="text-white font-bold text-xl mb-8 line-clamp-2 leading-relaxed drop-shadow-md">
                                         {relatedVideos[0] ? relatedVideos[0].name.replace(/\.[^/.]+$/, "") : "Next Video"}
                                     </p>
@@ -492,7 +494,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                 </div>
                             </div>
                         )}
-                        
+
                         {subtitlesEnabled && !hasSubtitles && (
                             <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-black/60 text-white px-4 py-1 rounded text-lg pointer-events-none z-20">
                                 [No Subtitle File Found]
@@ -591,8 +593,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white mb-4">{displayName}</h1>
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 pb-6 border-b border-white/5">
                         <div className="flex items-center gap-4">
-                             {/* Channel Avatar */}
-                             {video.channelAvatar ? (
+                            {/* Channel Avatar */}
+                            {video.channelAvatar ? (
                                 <img
                                     src={video.channelAvatar}
                                     className="w-12 h-12 rounded-full object-cover shadow-lg ring-2 ring-black bg-white/10"
@@ -626,8 +628,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             <button
                                 onClick={() => onToggleWatchLater?.(video.id)}
                                 className={`glass-button p-2.5 rounded-full transition-all ${playlists?.find(p => p.name === 'Watch Later')?.videoIds?.includes(video.id)
-                                        ? 'text-brand-primary bg-brand-primary/10 border-brand-primary/30'
-                                        : 'text-glass-subtext hover:text-white'
+                                    ? 'text-brand-primary bg-brand-primary/10 border-brand-primary/30'
+                                    : 'text-glass-subtext hover:text-white'
                                     }`}
                             >
                                 <HistoryIcon />
@@ -681,7 +683,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                 )}
                             </div>
 
-                             {/* YouTube Link */}
+                            {/* YouTube Link */}
                             <div className="relative">
                                 {video.youtubeId ? (
                                     <a
@@ -708,13 +710,13 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         <span>{views}</span>
                         <span className="text-white/20">•</span>
                         <span>
-                            {video.releaseDate 
-                                ? new Date(video.releaseDate).toLocaleDateString('en-US', { 
-                                    year: 'numeric', 
-                                    month: 'short', 
+                            {video.releaseDate
+                                ? new Date(video.releaseDate).toLocaleDateString('en-US', {
+                                    year: 'numeric',
+                                    month: 'short',
                                     day: 'numeric',
                                     timeZone: 'UTC'
-                                  })
+                                })
                                 : timeAgo}
                         </span>
                     </div>
