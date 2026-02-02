@@ -728,14 +728,8 @@ const AppContent = () => {
                                 A personal streaming experience for your local files.
                             </p>
                             <div className="flex gap-4">
-                                <button
-                                    onClick={handleLoadDemo}
-                                    className="bg-brand-primary hover:bg-brand-secondary text-white px-8 py-3.5 rounded-xl font-bold transition-all shadow-lg shadow-brand-primary/25 hover:shadow-brand-primary/40 hover:-translate-y-1 active:translate-y-0"
-                                >
-                                    View Demo Gallery
-                                </button>
+                                
                             </div>
-                            <p className="mt-8 text-xs text-glass-subtext/50">To open local files, use the "Open Folder" button in the top right.</p>
                         </div>
                     )}
 
