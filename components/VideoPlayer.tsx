@@ -134,7 +134,38 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
             videoRef.current.load();
             videoRef.current.playbackRate = 1;
         }
-    }, [video.id, video.url]);
+
+        // --- NEW: MEDIA SESSION API (Lock Screen Controls) ---
+        if ('mediaSession' in navigator) {
+            // 1. Tell the OS about the current video
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: video.name,
+                artist: video.channel || "Play21",
+                album: video.folder || "Local Library",
+                artwork: [
+                    { src: video.thumbnail || '/logo192.png', sizes: '512x512', type: 'image/jpeg' }
+                ]
+            });
+
+            // 2. Connect the Lock Screen buttons to our functions
+            navigator.mediaSession.setActionHandler('play', () => videoRef.current?.play());
+            navigator.mediaSession.setActionHandler('pause', () => videoRef.current?.pause());
+            
+            // "Next Track" button on lock screen -> Next Video
+            navigator.mediaSession.setActionHandler('nexttrack', () => {
+                if (hasNext) onNextVideo();
+            });
+
+            // "Previous Track" button -> Restart or Previous
+            navigator.mediaSession.setActionHandler('previoustrack', () => {
+                if (videoRef.current && videoRef.current.currentTime > 5) {
+                    videoRef.current.currentTime = 0; // Restart if we are deep in the video
+                } else if (hasPrev) {
+                    onPrevVideo();
+                }
+            });
+        }
+    }, [video.id, video.url, hasNext, hasPrev, onNextVideo, onPrevVideo]); // Added dependencies
 
     // --- KEYBOARD SHORTCUTS ---
     useEffect(() => {
