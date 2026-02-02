@@ -57,12 +57,15 @@ const AppContent = () => {
                 // Pass the current setting to the backend
                 const res = await fetch(`/api/discovery/random?hideHidden=${appSettings.hideHiddenFiles}`);
                 const data = await res.json();
+                
+                // FIX: Added the 'if' check back so the closing bracket '}' below matches something
                 if (data.success) {
                     const mapped = data.videos.map((v: any) => ({
                         ...v,
                         url: v.path,
                         subtitles: v.subtitles ? JSON.parse(v.subtitles) : [],
-                        isFavorite: Boolean(v.is_favorite)
+                        isFavorite: Boolean(v.is_favorite),
+                        channelAvatar: v.channel_avatar
                     }));
                     setRecommendedVideos(mapped);
                 }
@@ -71,7 +74,7 @@ const AppContent = () => {
             }
         };
         fetchDiscovery();
-    }, [appSettings.hideHiddenFiles]); // Add this dependency so it refreshes on toggle
+    }, [appSettings.hideHiddenFiles]);
 
     // Features State
     const [history, setHistory] = useState<string[]>([]);
@@ -124,7 +127,8 @@ const AppContent = () => {
                     ...v,
                     url: v.path,
                     subtitles: parsedSubtitles,
-                    isFavorite: Boolean(v.is_favorite)
+                    isFavorite: Boolean(v.is_favorite),
+                    channelAvatar: v.channel_avatar // <--- THE FIX
                 };
             });
 
