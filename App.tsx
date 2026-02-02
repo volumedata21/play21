@@ -66,7 +66,8 @@ const AppContent = () => {
                         subtitles: v.subtitles ? JSON.parse(v.subtitles) : [],
                         isFavorite: Boolean(v.is_favorite),
                         channelAvatar: v.channel_avatar,
-                        releaseDate: v.release_date
+                        releaseDate: v.release_date,
+                        youtubeId: v.youtube_id
                     }));
                     setRecommendedVideos(mapped);
                 }
@@ -130,7 +131,8 @@ const AppContent = () => {
                     subtitles: parsedSubtitles,
                     isFavorite: Boolean(v.is_favorite),
                     channelAvatar: v.channel_avatar,
-                    releaseDate: v.release_date
+                    releaseDate: v.release_date,
+                    youtubeId: v.youtube_id
                 };
             });
 
@@ -320,7 +322,8 @@ const AppContent = () => {
                             const videoData = {
                                 ...data,
                                 url: data.path,
-                                subtitles: typeof data.subtitles === 'string' ? JSON.parse(data.subtitles) : []
+                                subtitles: typeof data.subtitles === 'string' ? JSON.parse(data.subtitles) : [],
+                                youtubeId: data.youtube_id
                             };
                             setCurrentVideo(videoData);
                             setViewState(ViewState.WATCH);
