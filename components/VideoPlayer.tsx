@@ -396,7 +396,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         {/* Video Element */}
                         <video
                             ref={videoRef}
-                            src={isTranscoding ? `/api/stream/transcode/${video.id}` : `/api/stream/${video.id}`}
+                            src={isTranscoding ? `/api/transcode/${video.id}` : `/api/stream/${video.id}`}
                             controls
                             autoPlay
                             crossOrigin="anonymous"
