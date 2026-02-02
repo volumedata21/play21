@@ -65,7 +65,8 @@ const AppContent = () => {
                         url: v.path,
                         subtitles: v.subtitles ? JSON.parse(v.subtitles) : [],
                         isFavorite: Boolean(v.is_favorite),
-                        channelAvatar: v.channel_avatar
+                        channelAvatar: v.channel_avatar,
+                        releaseDate: v.release_date
                     }));
                     setRecommendedVideos(mapped);
                 }
@@ -128,7 +129,8 @@ const AppContent = () => {
                     url: v.path,
                     subtitles: parsedSubtitles,
                     isFavorite: Boolean(v.is_favorite),
-                    channelAvatar: v.channel_avatar // <--- THE FIX
+                    channelAvatar: v.channel_avatar,
+                    releaseDate: v.release_date
                 };
             });
 
