@@ -25,6 +25,7 @@
     "@vitejs/plugin-react": "^5.0.0",
     "concurrently": "^9.1.2",
     "typescript": "~5.8.2",
+    "vite-plugin-pwa": "^0.21.1",
     "vite": "^6.2.0"
   }
 }
