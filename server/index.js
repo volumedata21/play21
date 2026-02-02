@@ -948,24 +948,37 @@ app.get('/api/transcode/:id', (req, res) => {
 
   // THE MAGIC: FFmpeg with Intel QSV Hardware Acceleration
   const command = ffmpeg(fullPath)
-    // 1. Hardware Decode Options
-    // This tells FFmpeg to use the QSV device and keep frames in GPU memory (zero-copy)
+    // --- INPUT OPTIONS ---
     .inputOptions([
-      '-init_hw_device qsv=hw:/dev/dri/renderD128',
-      '-hwaccel qsv',
-      '-hwaccel_output_format qsv',
+      '-hwaccel vaapi',
+      '-hwaccel_device /dev/dri/renderD128',
+      '-hwaccel_output_format vaapi',
       '-noautorotate',
-      '-vf scale_qsv=format=nv12'
+      
+      // LATENCY FIX: Reduce analysis time to speed up start (default is 5000000)
+      '-analyzeduration 10000000', 
+      '-probesize 10000000'
     ])
-    // 2. Hardware Encode Options
+    // --- OUTPUT OPTIONS ---
     .outputOptions([
-      '-c:v h264_qsv',        // Use Intel QuickSync Encoder (crucial!)
-      '-preset ultrafast',    // Prioritize speed for streaming
-      '-global_quality 23',   // QSV uses global_quality, not -crf (lower = better quality)
-      '-look_ahead 0',        // Reduces buffer latency
-      '-c:a aac',             // Audio is still done on CPU (it's cheap)
-      '-b:a 128k',
-      '-movflags frag_keyframe+empty_moov', // Required for streaming MP4
+      // QUALITY FIX: Ensure high-quality scaling
+      '-vf scale_vaapi=format=nv12',
+
+      '-c:v h264_vaapi',
+      
+      // QUALITY FIX: Increase Bitrate & Buffer
+      '-rc_mode VBR',
+      '-b:v 8M',        // Bump from 5M to 8M for cleaner image
+      '-maxrate 12M',   // Allow bursts up to 12M for complex scenes
+      '-bufsize 24M',   // Larger buffer helps smooth out quality drops
+      
+      // AUDIO FIX: Better audio quality and force stereo (safer for browsers)
+      '-c:a aac',
+      '-b:a 192k',
+      '-ac 2',
+
+      // LATENCY FIX: 'default_base_moof' helps browsers play segments sooner
+      '-movflags frag_keyframe+empty_moov+default_base_moof',
       '-f mp4'
     ])
     .on('error', (err) => {
