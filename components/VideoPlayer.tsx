@@ -707,7 +707,16 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <div className="flex items-center gap-3 text-sm font-bold mb-3 text-white/90">
                         <span>{views}</span>
                         <span className="text-white/20">•</span>
-                        <span>{video.releaseDate || timeAgo}</span>
+                        <span>
+                            {video.releaseDate 
+                                ? new Date(video.releaseDate).toLocaleDateString('en-US', { 
+                                    year: 'numeric', 
+                                    month: 'short', 
+                                    day: 'numeric',
+                                    timeZone: 'UTC'
+                                  })
+                                : timeAgo}
+                        </span>
                     </div>
 
                     <div className="text-sm text-glass-text">

@@ -602,7 +602,9 @@ app.get('/api/videos', (req, res) => {
       ...v,
       isFavorite: Boolean(v.is_favorite),
       views: `${v.views} views`,
-      timeAgo: v.release_date || new Date(v.created_at).toLocaleDateString(),
+      timeAgo: v.release_date 
+        ? new Date(v.release_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' })
+        : new Date(v.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
       durationStr: formatDuration(v.duration),
     }));
 
@@ -628,7 +630,9 @@ app.get('/api/videos/:id', (req, res) => {
       isFavorite: Boolean(video.is_favorite),
       viewsCount: video.views,
       views: `${video.views} views`,
-      timeAgo: video.release_date || new Date(video.created_at).toLocaleDateString(),
+      timeAgo: video.release_date 
+  ? new Date(video.release_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })
+  : new Date(video.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
       thumbnail: video.thumbnail || null,
       durationStr: formatDuration(video.duration),
       channelAvatar: video.channel_avatar,
