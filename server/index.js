@@ -946,19 +946,27 @@ app.get('/api/stream/transcode/:id', (req, res) => {
     'Connection': 'keep-alive',
   });
 
-  // THE MAGIC: FFmpeg with Hardware Acceleration
+  // THE MAGIC: FFmpeg with Intel QSV Hardware Acceleration
   const command = ffmpeg(fullPath)
-    .inputOptions(['-hwaccel auto'])
+    // 1. Hardware Decode Options
+    // This tells FFmpeg to use the QSV device and keep frames in GPU memory (zero-copy)
+    .inputOptions([
+      '-hwaccel qsv',
+      '-hwaccel_output_format qsv' 
+    ])
+    // 2. Hardware Encode Options
     .outputOptions([
-      '-c:v libx264',
-      '-preset ultrafast',
-      '-crf 23',
-      '-c:a aac',
+      '-c:v h264_qsv',        // Use Intel QuickSync Encoder (crucial!)
+      '-preset ultrafast',    // Prioritize speed for streaming
+      '-global_quality 23',   // QSV uses global_quality, not -crf (lower = better quality)
+      '-look_ahead 0',        // Reduces buffer latency
+      '-c:a aac',             // Audio is still done on CPU (it's cheap)
       '-b:a 128k',
-      '-movflags frag_keyframe+empty_moov',
+      '-movflags frag_keyframe+empty_moov', // Required for streaming MP4
       '-f mp4'
     ])
     .on('error', (err) => {
+      // Ignore the error if it's just the client disconnecting
       if (err.message !== 'Output stream closed') {
         console.error('Transcoding error:', err);
       }
@@ -970,7 +978,7 @@ app.get('/api/stream/transcode/:id', (req, res) => {
   });
 
   command.pipe(res, { end: true });
-  });
+});
 
   // --- MANUAL SCAN ROUTE ---
 app.post('/api/scan', (req, res) => {

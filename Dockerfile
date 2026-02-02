@@ -13,17 +13,25 @@ RUN npm run build
 # Stage 2: Final Production Image
 FROM node:20-slim
 
-# 1. Install FFmpeg for video processing/transcoding
-RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
+# 1. Install FFmpeg AND Intel Drivers
+# FIX: Added "non-free" to the source list so apt can find the driver
+RUN echo "deb http://deb.debian.org/debian bookworm main non-free non-free-firmware" > /etc/apt/sources.list.d/non-free.list && \
+    apt-get update && \
+    apt-get install -y \
+    ffmpeg \
+    intel-media-va-driver-non-free \
+    libva-drm2 \
+    libmfx1 \
+    vainfo \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# 2. Install ONLY production dependencies (keeps image small)
+# 2. Install ONLY production dependencies
 COPY package*.json ./
 RUN npm install --production
 
 # 3. Copy the server code specifically
-# (We do NOT use 'COPY . .' here to avoid overwriting dependencies)
 COPY server ./server
 
 # 4. Copy the built frontend from Stage 1
