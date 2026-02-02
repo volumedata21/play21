@@ -15,7 +15,7 @@ FROM node:20-slim
 
 # 1. Install FFmpeg AND Intel Drivers
 # FIX: Added "non-free" to the source list so apt can find the driver
-RUN echo "deb http://deb.debian.org/debian bookworm main non-free non-free-firmware" > /etc/apt/sources.list.d/non-free.list && \
+RUN sed -i 's/Components: main/Components: main non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources && \
     apt-get update && \
     apt-get install -y \
     ffmpeg \
