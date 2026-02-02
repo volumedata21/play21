@@ -18,23 +18,40 @@ const VideoCard: React.FC<VideoCardProps> = ({
 }) => {
   const [thumbnail, setThumbnail] = useState<string | null>(video.thumbnail || null);
   const [duration, setDuration] = useState<string>(video.durationStr || "0:00");
-  const [isAnimating, setIsAnimating] = useState(false); // <--- NEW: Animation state
+  const [isAnimating, setIsAnimating] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const displayViews = video.viewsCount !== undefined ? `${video.viewsCount} views` : (video.views || formatViews());
 
-  // Attempt to generate thumbnail if not provided
+  // 1. Sync state with props if they change (e.g. after a server re-scan)
   useEffect(() => {
-    if (thumbnail) return; // If we have a thumbnail (from mock or previously generated), skip
+    if (video.durationStr && video.durationStr !== "0:00") {
+      setDuration(video.durationStr);
+    }
+  }, [video.durationStr]);
+
+  // 2. Smart Metadata Loading (Fixes the "Missing Duration" bug)
+  useEffect(() => {
+    // If we already have BOTH a thumbnail and a valid duration, do nothing.
+    if (thumbnail && duration !== "0:00") return;
 
     const videoEl = videoRef.current;
     if (!videoEl) return;
 
-    const captureThumbnail = () => {
-      videoEl.currentTime = 5;
+    const handleLoadedMetadata = () => {
+      // Fix Duration if missing
+      if (duration === "0:00" && videoEl.duration && !isNaN(videoEl.duration)) {
+        setDuration(formatDuration(videoEl.duration));
+      }
+
+      // Only seek to capture thumbnail if we explicitly need one
+      if (!thumbnail) {
+        videoEl.currentTime = 5;
+      }
     };
 
     const handleSeeked = () => {
+      if (thumbnail) return; // Don't overwrite if we already have one
       try {
         const canvas = document.createElement('canvas');
         canvas.width = 320;
@@ -50,37 +67,26 @@ const VideoCard: React.FC<VideoCardProps> = ({
       }
     };
 
-    const handleLoadedMetadata = () => {
-      if (!video.durationStr) {
-        setDuration(formatDuration(videoEl.duration));
-      }
-      captureThumbnail();
-    };
-
     videoEl.addEventListener('loadedmetadata', handleLoadedMetadata);
     videoEl.addEventListener('seeked', handleSeeked);
+
+    // Force load if readyState is 0 (HAVE_NOTHING) to ensure metadata triggers
+    if (videoEl.readyState === 0) videoEl.load();
 
     return () => {
       videoEl.removeEventListener('loadedmetadata', handleLoadedMetadata);
       videoEl.removeEventListener('seeked', handleSeeked);
     };
-  }, [video.url, thumbnail]);
+  }, [video.url, thumbnail, duration]); // Re-run if any of these are missing/change
 
-  // --- NEW: Handle the Click with Animation ---
   const handleWatchLaterClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-
-    // Trigger the pop animation
     setIsAnimating(true);
-    setTimeout(() => setIsAnimating(false), 300); // Reset after 300ms
-
+    setTimeout(() => setIsAnimating(false), 300);
     if (onToggleWatchLater) onToggleWatchLater();
   };
 
   const handleCardClick = (e: React.MouseEvent) => {
-    // If we are in selection mode (onSelect is provided and active elsewhere implies we might want to default to select),
-    // but standard UI pattern is: click image to play, click checkbox to select.
-    // However, if onSelect is present, we provide a dedicated hit area.
     onClick();
   };
 
@@ -91,27 +97,27 @@ const VideoCard: React.FC<VideoCardProps> = ({
         className="relative aspect-video rounded-2xl overflow-hidden bg-white/5 border border-white/5 shadow-2xl transition-all duration-300 transform group-hover:shadow-[0_0_20px_rgba(99,102,241,0.2)] group-hover:-translate-y-1 outline-none focus:outline-none"
         onClick={handleCardClick}
       >
-        {/* Hidden video for processing if no thumbnail provided */}
-        {!video.thumbnail && (
+        {/* CRITICAL FIX: Render the hidden video if we are missing the thumbnail OR the duration.
+            Previously, this was '!video.thumbnail', so existing thumbnails blocked duration fixing.
+        */}
+        {(!thumbnail || duration === "0:00") && (
           <video
             ref={videoRef}
             src={video.url}
             className="hidden"
             preload="metadata"
             muted
+            crossOrigin="anonymous" 
           />
         )}
 
         {thumbnail ? (
           <div className="relative w-full h-full bg-black flex items-center justify-center overflow-hidden">
-            {/* 1. THE BLURRED BACKGROUND LAYER */}
             <img
               src={thumbnail}
               alt=""
               className="absolute inset-0 w-full h-full object-cover blur-xl opacity-50 scale-110"
             />
-
-            {/* 2. THE ACTUAL SHARP IMAGE LAYER */}
             <img
               src={thumbnail}
               alt={video.name}
@@ -124,47 +130,38 @@ const VideoCard: React.FC<VideoCardProps> = ({
           </div>
         )}
 
-        {/* Duration Badge */}
-        <div className="absolute bottom-2 right-2 bg-black/60 backdrop-blur-md border border-white/10 px-1.5 py-0.5 rounded-md text-[10px] font-bold tracking-wide">
-          {duration}
-        </div>
+        {/* Duration Badge - Only show if valid */}
+        {duration && duration !== "0:00" && (
+          <div className="absolute bottom-2 right-2 bg-black/60 backdrop-blur-md border border-white/10 px-1.5 py-0.5 rounded-md text-[10px] font-bold tracking-wide text-white z-20">
+            {duration}
+          </div>
+        )}
 
         {/* Hover Overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
-
-      {/* --- UPDATED: Watch Later Button --- */}
+        {/* Watch Later Button */}
         {onToggleWatchLater && (
           <div
             className={`absolute top-2 right-2 p-1.5 rounded-full transition-all duration-300 z-30 flex items-center justify-center
-              ${/* 1. VISIBILITY: Visible on Mobile, Hidden on Desktop until hover */ ''}
               ${isInWatchLater ? 'opacity-100' : 'opacity-100 lg:opacity-0 lg:group-hover:opacity-100'}
-              
-              ${/* 2. COLORS & GRADIENT (New!) */ ''}
               ${isInWatchLater 
                 ? 'bg-gradient-to-br from-brand-primary to-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.5)] border border-white/20' 
                 : 'bg-black/60 text-white/70 hover:bg-brand-primary hover:text-white backdrop-blur-sm border border-transparent'}
-
-              ${/* 3. ANIMATION */ ''}
               ${isAnimating ? 'scale-125 brightness-125' : 'scale-100'}
             `}
             onClick={handleWatchLaterClick}
             title="Watch Later"
           >
              <div className="scale-75">
-                {/* FIX: Keep the HistoryIcon (Clock) for both states so it doesn't disappear. 
-                    The button color tells the user it is active. */}
                 <HistoryIcon />
              </div>
           </div>
         )}
-
-              </div> {/* <--- This closing div is now safely outside the comments! */}
-
+      </div>
 
       {/* Info Section */}
       <div className="flex gap-3 px-1" onClick={handleCardClick}>
-        {/* UPDATED: Channel Avatar */}
         <div className="flex-shrink-0 mt-0.5">
           {video.channelAvatar ? (
             <img
@@ -174,32 +171,28 @@ const VideoCard: React.FC<VideoCardProps> = ({
             />
           ) : (
             <div className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-secondary to-blue-600 shadow-lg border border-white/10 flex items-center justify-center text-xs font-bold text-white">
-              {/* Fallback to Channel Initial or Video Initial */}
               {video.channel ? video.channel.charAt(0).toUpperCase() : (video.name[0] || "L")}
             </div>
           )}
         </div>
-        {/* Texts */}
         <div className="flex flex-col gap-0.5 min-w-0">
           <h3 className="text-[15px] font-semibold text-white/90 line-clamp-2 leading-snug group-hover:text-brand-primary transition-colors">
             {video.name}
           </h3>
           <div className="text-xs text-glass-subtext flex flex-col gap-0.5">
-            {/* UPDATED: Channel Name or Folder */}
             <span className="font-medium hover:text-white transition-colors truncate">
               {video.channel || video.folder}
             </span>
             <div className="flex items-center gap-1.5 opacity-80">
               <span>{displayViews}</span>
               <span className="w-0.5 h-0.5 bg-current rounded-full"></span>
-              {/* This checks if we have a release date and formats it to look nice */}
               <span>
                 {video.releaseDate
                   ? new Date(video.releaseDate).toLocaleDateString('en-US', {
                     year: 'numeric',
                     month: 'short',
                     day: 'numeric',
-                    timeZone: 'UTC' // Important for Synology/Linux consistency
+                    timeZone: 'UTC'
                   })
                   : video.timeAgo}
               </span>
@@ -219,24 +212,20 @@ export const RecommendationRow = ({
 }: {
   videos: VideoFile[],
   onVideoSelect: (v: VideoFile) => void
-
-
 }) => {
   return (
     <div className="my-10 animate-fade-in py-8 bg-white/[0.03] backdrop-blur-sm border-y border-white/5 md:border md:rounded-3xl relative isolate -mx-6 md:mx-0">
-      {/* Header */}
       <div className="flex items-center gap-3 mb-6 px-6">
         <div className="w-1.5 h-6 bg-brand-primary rounded-full shadow-[0_0_12px_rgba(37,99,235,0.8)]"></div>
         <h3 className="text-xl font-bold text-white tracking-tight">Recommended for You</h3>
       </div>
 
-      {/* Scroll Container */}
       <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide snap-x touch-pan-x px-6">
         {videos.map((video) => (
           <div
             key={video.id}
             onClick={(e) => {
-              e.preventDefault(); // Stop any default link behavior
+              e.preventDefault();
               onVideoSelect(video);
             }}
             className="flex-none w-36 sm:w-44 md:w-52 snap-start group cursor-pointer outline-none focus:outline-none focus:ring-0"
@@ -247,24 +236,25 @@ export const RecommendationRow = ({
                 className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
                 alt={video.name}
               />
-
-              {/* 1. FIXED: Gradient only covers the bottom 40% (approx 1/3rd visually) */}
               <div className="absolute bottom-0 left-0 right-0 h-[40%] bg-gradient-to-t from-black via-black/80 to-transparent opacity-100" />
+              
+              {/* Added Duration Badge to Recommendation Row too */}
+              {video.durationStr && video.durationStr !== "0:00" && (
+                 <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-md border border-white/10 px-1.5 py-0.5 rounded-md text-[9px] font-bold tracking-wide text-white z-20">
+                    {video.durationStr}
+                 </div>
+              )}
 
               <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4 text-left">
-
-                {/* 2. Channel Avatar with Thicker Stroke & Glow */}
                 {(video.channelAvatar || (video as any).channel_avatar) && (
                   <div className="mb-3">
                     <img
                       src={video.channelAvatar || (video as any).channel_avatar}
-                      // Added border-[1.5px] and custom shadow for the glow
                       className="w-8 h-8 rounded-full border-[1.5px] border-white/50 shadow-[0_0_12px_rgba(255,255,255,0.3)] object-cover"
                       alt={video.channel || "Channel"}
                     />
                   </div>
                 )}
-
                 <p className="text-xs sm:text-sm font-bold text-white line-clamp-2 leading-snug drop-shadow-md">
                   {video.name}
                 </p>
