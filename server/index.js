@@ -930,7 +930,7 @@ app.post('/api/settings', (req, res) => {
 });
 
 // --- HARDWARE TRANSCODING ROUTE (New) ---
-app.get('/api/stream/transcode/:id', (req, res) => {
+app.get('/api/transcode/:id', (req, res) => {
   const video = db.prepare('SELECT path FROM videos WHERE id = ?').get(req.params.id);
   if (!video) return res.status(404).send('Not found');
 
