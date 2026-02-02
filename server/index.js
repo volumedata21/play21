@@ -951,8 +951,11 @@ app.get('/api/transcode/:id', (req, res) => {
     // 1. Hardware Decode Options
     // This tells FFmpeg to use the QSV device and keep frames in GPU memory (zero-copy)
     .inputOptions([
+      '-init_hw_device qsv=hw:/dev/dri/renderD128',
       '-hwaccel qsv',
-      '-hwaccel_output_format qsv' 
+      '-hwaccel_output_format qsv',
+      '-noautorotate',
+      '-vf scale_qsv=format=nv12'
     ])
     // 2. Hardware Encode Options
     .outputOptions([
