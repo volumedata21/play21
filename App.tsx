@@ -642,6 +642,19 @@ const AppContent = () => {
         return [...sameFolder, ...others].slice(0, 10);
     }, [currentVideo, allVideos]);
 
+    const nextQueue = useMemo(() => {
+        if (!currentVideo || displayedVideos.length === 0) return [];
+        
+        const currentIndex = displayedVideos.findIndex(v => v.id === currentVideo.id);
+        
+        // If we found the current video, grab the NEXT 5 videos from the list
+        if (currentIndex !== -1 && currentIndex < displayedVideos.length - 1) {
+            return displayedVideos.slice(currentIndex + 1, currentIndex + 6);
+        }
+        
+        return [];
+    }, [currentVideo, displayedVideos]);
+
     // --- SIDEBAR WRAPPERS ---
     // Removed duplicate handleSidebarViewChange
 
@@ -932,6 +945,7 @@ const AppContent = () => {
                         <VideoPlayer
                             video={currentVideo}
                             relatedVideos={relatedVideos}
+                            nextQueue={nextQueue}
                             playlists={playlists}
                             hasNext={hasNext}
                             hasPrev={hasPrev}

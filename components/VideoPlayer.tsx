@@ -6,6 +6,7 @@ import { formatViews, formatTimeAgo } from '../services/fileService';
 interface VideoPlayerProps {
     video: VideoFile;
     relatedVideos: VideoFile[];
+    nextQueue: VideoFile[];
     playlists: Playlist[];
     hasNext: boolean;
     hasPrev: boolean;
@@ -61,6 +62,7 @@ const DescriptionRenderer = ({ text, onSeek }: { text: string, onSeek: (time: nu
 const VideoPlayer: React.FC<VideoPlayerProps> = ({
     video,
     relatedVideos,
+    nextQueue,
     playlists,
     hasNext,
     hasPrev,
@@ -83,6 +85,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     // State for loading indicators
     const [isProcessingThumb, setIsProcessingThumb] = useState(false);
+
+    const upNextVideo = (nextQueue && nextQueue.length > 0) ? nextQueue[0] : relatedVideos[0];
 
     const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -451,8 +455,9 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
                                     <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-brand-primary mb-4 drop-shadow-sm">Up Next</h2>
 
+                                    {/* CORRECTED: Uses upNextVideo logic inside the card */}
                                     <p className="text-white font-bold text-xl mb-8 line-clamp-2 leading-relaxed drop-shadow-md">
-                                        {relatedVideos[0] ? relatedVideos[0].name.replace(/\.[^/.]+$/, "") : "Next Video"}
+                                        {upNextVideo ? upNextVideo.name.replace(/\.[^/.]+$/, "") : "Next Video"}
                                     </p>
 
                                     {/* Glowing Progress Circle */}
@@ -492,12 +497,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                         </button>
                                     </div>
                                 </div>
-                            </div>
-                        )}
-
-                        {subtitlesEnabled && !hasSubtitles && (
-                            <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-black/60 text-white px-4 py-1 rounded text-lg pointer-events-none z-20">
-                                [No Subtitle File Found]
                             </div>
                         )}
                     </div>
@@ -735,31 +734,81 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </div>
             </div>
 
-            {/* 6. CHANGED: Added px-4 lg:px-0 to Sidebar column */}
+            {/* Sidebar Column */}
             <div className="lg:col-span-1 px-4 lg:px-0">
                 <h3 className="text-lg font-bold mb-5 text-white/90 border-l-4 border-brand-primary pl-4">Up Next</h3>
                 <div className="flex flex-col gap-4">
-                    {relatedVideos.map(related => (
-                        <div key={related.id} className="flex gap-3 cursor-pointer group p-2 rounded-xl hover:bg-white/5 transition-all border border-transparent hover:border-white/5" onClick={() => onVideoSelect(related)}>
+                    
+                    {/* 1. THE QUEUE (Next 5 Videos) */}
+                    {nextQueue.map((item, index) => (
+                        <div 
+                            key={`queue-${item.id}`} 
+                            className={`flex gap-3 cursor-pointer group p-2 rounded-xl transition-all border border-transparent 
+                                ${index === 0 ? 'bg-white/10 border-white/5' : 'hover:bg-white/5 hover:border-white/5'}
+                            `} 
+                            onClick={() => onVideoSelect(item)}
+                        >
                             <div className="relative w-40 h-24 flex-shrink-0 bg-gray-800 rounded-lg overflow-hidden border border-white/5 shadow-md">
-                                {related.thumbnail ? (
-                                    <img src={related.thumbnail} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-all duration-300 group-hover:scale-105" />
+                                {item.thumbnail ? (
+                                    <img src={item.thumbnail} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-all duration-300 group-hover:scale-105" />
                                 ) : (
-                                    <div className="w-full h-full flex items-center justify-center bg-white/5">
-                                        <NextVideoIcon />
-                                    </div>
+                                    <div className="w-full h-full flex items-center justify-center bg-white/5"><NextVideoIcon /></div>
                                 )}
                                 <div className="absolute bottom-1 right-1 bg-black/70 backdrop-blur-sm px-1.5 py-0.5 rounded text-[10px] font-bold">
-                                    {related.durationStr || "VIDEO"}
+                                    {item.durationStr || "VIDEO"}
                                 </div>
                             </div>
                             <div className="flex flex-col gap-1 min-w-0 pt-1">
-                                <h4 className="text-sm font-bold line-clamp-2 leading-snug text-white/90 group-hover:text-brand-primary transition-colors">{related.name.replace(/\.[^/.]+$/, "")}</h4>
-                                <p className="text-xs text-glass-subtext truncate">{related.folder}</p>
-                                <p className="text-xs text-glass-subtext mt-auto">{related.views || formatViews()}</p>
+                                <h4 className={`text-sm font-bold line-clamp-2 leading-snug transition-colors ${index === 0 ? 'text-brand-primary' : 'text-white/90 group-hover:text-brand-primary'}`}>
+                                    {item.name.replace(/\.[^/.]+$/, "")}
+                                </h4>
+                                <p className="text-xs text-glass-subtext truncate">{item.folder}</p>
+                                <p className="text-xs text-glass-subtext mt-auto">{item.views || formatViews()}</p>
                             </div>
                         </div>
                     ))}
+
+                    {/* 2. THE DIVIDER (Only show if we have a queue AND related videos) */}
+                    {nextQueue.length > 0 && relatedVideos.length > 0 && (
+                        <div className="relative py-2 opacity-60">
+                            <div className="absolute inset-0 flex items-center">
+                                <div className="w-full border-t border-white/10"></div>
+                            </div>
+                            <div className="relative flex justify-center">
+                                <span className="bg-[#0a0a0a] px-3 text-[10px] text-glass-subtext uppercase tracking-widest font-bold">More Related</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 3. RELATED VIDEOS (Filtered) */}
+                    {relatedVideos
+                        .filter(r => !nextQueue.find(q => q.id === r.id)) // Remove duplicates
+                        .map(related => (
+                            <div 
+                                key={`related-${related.id}`} 
+                                className="flex gap-3 cursor-pointer group p-2 rounded-xl hover:bg-white/5 transition-all border border-transparent hover:border-white/5" 
+                                onClick={() => onVideoSelect(related)}
+                            >
+                                <div className="relative w-40 h-24 flex-shrink-0 bg-gray-800 rounded-lg overflow-hidden border border-white/5 shadow-md">
+                                    {related.thumbnail ? (
+                                        <img src={related.thumbnail} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-all duration-300 group-hover:scale-105" />
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center bg-white/5"><NextVideoIcon /></div>
+                                    )}
+                                    <div className="absolute bottom-1 right-1 bg-black/70 backdrop-blur-sm px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                        {related.durationStr || "VIDEO"}
+                                    </div>
+                                </div>
+                                <div className="flex flex-col gap-1 min-w-0 pt-1">
+                                    <h4 className="text-sm font-bold line-clamp-2 leading-snug text-white/90 group-hover:text-brand-primary transition-colors">
+                                        {related.name.replace(/\.[^/.]+$/, "")}
+                                    </h4>
+                                    <p className="text-xs text-glass-subtext truncate">{related.folder}</p>
+                                    <p className="text-xs text-glass-subtext mt-auto">{related.views || formatViews()}</p>
+                                </div>
+                            </div>
+                        ))
+                    }
                 </div>
             </div>
         </div>
