@@ -92,6 +92,28 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     const lastTapRef = useRef<{ time: number, x: number } | null>(null);
 
+    const savedTimeRef = useRef<number>(0);
+
+    // FIX: Restore time when switching to Transcode stream
+    useEffect(() => {
+        if (isTranscoding && videoRef.current) {
+            const handleLoaded = () => {
+                if (savedTimeRef.current > 0) {
+                    console.log(`Restoring playback position to ${savedTimeRef.current}s`);
+                    videoRef.current.currentTime = savedTimeRef.current;
+                    // Try to play immediately
+                    videoRef.current.play().catch(e => console.warn("Autoplay blocked after restore", e));
+                }
+            };
+            // Listen for the new stream to be ready, then run the restore function ONCE
+            videoRef.current.addEventListener('loadedmetadata', handleLoaded, { once: true });
+            
+            return () => {
+                videoRef.current?.removeEventListener('loadedmetadata', handleLoaded);
+            };
+        }
+    }, [isTranscoding]);
+
     const handleTouchEnd = (e: React.TouchEvent) => {
         const now = Date.now();
         // Use 'touches' if changedTouches is empty, just to be safe
@@ -133,6 +155,9 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         setShowShareMenu(false);
         setPlaybackSpeed(1);
         setSubtitlesEnabled(false);
+        
+        // FIX: Reset saved time so new videos start at 0
+        savedTimeRef.current = 0; 
 
         if (videoRef.current) {
             videoRef.current.load();
@@ -410,10 +435,12 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                 const target = e.target as HTMLVideoElement;
                                 const error = target.error;
 
-                                // Check for both Error 4 (Format Not Supported) AND Error 3 (Decode Error)
-                                // Error 3 often happens with high-bitrate files that the browser "thinks" it can play but fails midway.
                                 if (error && (error.code === 4 || error.code === 3) && !isTranscoding) {
                                     console.log(`Playback error code ${error.code}: switching to transcode stream...`);
+                                    
+                                    // FIX: Save the current time!
+                                    savedTimeRef.current = target.currentTime;
+                                    
                                     setIsTranscoding(true);
                                 } else {
                                     console.error("Unrecoverable video error:", error);
