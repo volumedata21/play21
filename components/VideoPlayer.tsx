@@ -19,6 +19,15 @@ interface VideoPlayerProps {
     onCreatePlaylist: () => void;
 }
 
+// Helper to format file size (e.g. 1.5 GB)
+const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
 // Helper to render description with clickable Links and Timestamps
 const DescriptionRenderer = ({ text, onSeek }: { text: string, onSeek: (time: number) => void }) => {
     if (!text) return <p className="text-glass-text/90 leading-relaxed text-base">No description available.</p>;
@@ -113,6 +122,25 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
             };
         }
     }, [isTranscoding]);
+
+    // State for file size
+    const [fileSize, setFileSize] = useState<string | null>(null);
+
+    // FIX: Fetch file size when video loads
+    useEffect(() => {
+        const fetchSize = async () => {
+            try {
+                // Ask the server for the file header only (lightweight)
+                const res = await fetch(`/api/stream/${video.id}`, { method: 'HEAD' });
+                const size = res.headers.get('content-length');
+                if (size) setFileSize(formatFileSize(parseInt(size)));
+            } catch (e) {
+                console.error("Could not get file size", e);
+                setFileSize(null);
+            }
+        };
+        fetchSize();
+    }, [video.id]);
 
     const handleTouchEnd = (e: React.TouchEvent) => {
         const now = Date.now();
@@ -757,6 +785,68 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                 }
                             }}
                         />
+                    </div>
+                </div>
+                {/* --- NEW: File Metadata Section --- */}
+                <div className="mx-4 md:mx-0 mt-6 p-6 rounded-2xl border border-white/5 bg-white/[0.02]">
+                    <h3 className="text-xs font-bold text-white/40 uppercase tracking-widest mb-6 border-b border-white/5 pb-2">File Metadata</h3>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-8 text-xs">
+                        {/* Filename (Cleaned) */}
+                        <div>
+                            <div className="text-glass-subtext mb-1 font-medium">Filename</div>
+                            <div className="font-mono text-white/80 break-all select-all">
+                                {decodeURIComponent((video as any).filename || video.name)}
+                            </div>
+                        </div>
+
+                        {/* File Size (New!) */}
+                        <div>
+                            <div className="text-glass-subtext mb-1 font-medium">File Size</div>
+                            <div className="font-mono text-white/80">
+                                {fileSize || "Loading..."}
+                            </div>
+                        </div>
+
+                        {/* Location (Cleaned) */}
+                        <div>
+                            <div className="text-glass-subtext mb-1 font-medium">Folder Location</div>
+                            <div className="font-mono text-white/80 break-all">
+                                {decodeURIComponent(video.folder)}
+                            </div>
+                        </div>
+
+                        {/* Metadata: Date */}
+                        {video.releaseDate && (
+                            <div>
+                                <div className="text-glass-subtext mb-1 font-medium">Metadata Date</div>
+                                <div className="text-white/80 font-mono">
+                                    {new Date(video.releaseDate).toLocaleDateString(undefined, { dateStyle: 'full' })}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Full Path (Cleaned) */}
+                        <div className="sm:col-span-2">
+                            <div className="text-glass-subtext mb-1 font-medium">Full System Path</div>
+                            <div className="font-mono text-white/60 break-all select-all bg-black/20 p-2.5 rounded border border-white/5">
+                                {decodeURIComponent(video.path)}
+                            </div>
+                        </div>
+
+                        {/* Metadata: Tags/Genre */}
+                        {video.genre && (
+                            <div className="sm:col-span-2">
+                                <div className="text-glass-subtext mb-2 font-medium">Metadata Tags</div>
+                                <div className="flex flex-wrap gap-2">
+                                    {video.genre.split(/[,/]/).map((tag, i) => (
+                                        <span key={i} className="px-2.5 py-1 rounded-md bg-brand-primary/10 text-brand-primary border border-brand-primary/20 text-[11px] font-medium tracking-wide">
+                                            {tag.trim()}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
