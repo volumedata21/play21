@@ -10,3 +10,7 @@ services:
       - ./data:/app/data
     devices:
       - /dev/dri:/dev/dri
+    environment:
+      - ALLOWED_DOMAINS=* (Default behavior)
+#     - ALLOWED_DOMAINS=https://my-site.com,https://another-site.org
+#     - ALLOWED_DOMAINS=*.example.com,*.internal.net
