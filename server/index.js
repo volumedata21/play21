@@ -494,9 +494,49 @@ async function scanMedia(forceRefresh = false) {
 // ---------------------------------------------------------
 app.use(express.json({ limit: '50mb' }));
 
+// ---------------------------------------------------------
+// CORS CONFIGURATION
+// ---------------------------------------------------------
+// Parse allowed domains from ENV, default to '*' if not set
+const allowedOrigins = process.env.ALLOWED_DOMAINS 
+  ? process.env.ALLOWED_DOMAINS.split(',').map(d => d.trim()) 
+  : ['*'];
+
 app.use(cors({
-  origin: '*',
+  origin: (origin, callback) => {
+    // 1. Allow requests with no origin (like mobile apps, curl, or same-origin)
+    if (!origin) return callback(null, true);
+
+    // 2. Check against the whitelist
+    const isAllowed = allowedOrigins.some(allowed => {
+      // A. Allow All
+      if (allowed === '*') return true;
+
+      // B. Wildcard Subdomains (e.g., *.example.com)
+      if (allowed.startsWith('*.')) {
+        const domainRoot = allowed.slice(2); // Remove "*." to get "example.com"
+        try {
+          const originHostname = new URL(origin).hostname;
+          // Matches "sub.example.com" OR "example.com"
+          return originHostname.endsWith('.' + domainRoot) || originHostname === domainRoot;
+        } catch (e) {
+          return false;
+        }
+      }
+
+      // C. Exact Match (User should provide full origin e.g. "https://myapp.com")
+      return origin === allowed;
+    });
+
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      console.warn(`CORS blocked request from: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'DELETE', 'UPDATE', 'PUT', 'PATCH'],
+  credentials: true // Required to allow cookies/headers across domains
 }));
 
 app.use('/media', express.static(mediaDir));
