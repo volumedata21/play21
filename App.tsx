@@ -504,6 +504,13 @@ const AppContent = () => {
         navigate(`/watch/${video.id}`);
     };
 
+    const handleTagSelect = (tag: string) => {
+        setSearchTerm(tag);       // 1. Set the search bar
+        setViewState(ViewState.HOME); // 2. Switch to Home View
+        setCurrentVideo(null);    // 3. Close the player
+        navigate('/');            // 4. Clear any video IDs from URL
+    };
+
     const handleNextVideo = () => {
         if (!currentVideo) return;
 
@@ -956,6 +963,7 @@ const AppContent = () => {
                             onNextVideo={handleNextVideo}
                             onPrevVideo={handlePrevVideo}
                             onCreatePlaylist={handleCreatePlaylist}
+                            onTagSelect={handleTagSelect}
                         />
                     )}
                 </main>

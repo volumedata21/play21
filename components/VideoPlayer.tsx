@@ -17,7 +17,17 @@ interface VideoPlayerProps {
     onNextVideo: () => void;
     onPrevVideo: () => void;
     onCreatePlaylist: () => void;
+    onTagSelect: (tag: string) => void;
 }
+
+// Helper to format file size (e.g. 1.5 GB)
+const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
 
 // Helper to render description with clickable Links and Timestamps
 const DescriptionRenderer = ({ text, onSeek }: { text: string, onSeek: (time: number) => void }) => {
@@ -72,7 +82,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     onToggleWatchLater,
     onNextVideo,
     onPrevVideo,
-    onCreatePlaylist
+    onCreatePlaylist,
+    onTagSelect
 }) => {
     const [showPlaylistMenu, setShowPlaylistMenu] = useState(false);
     const [showShareMenu, setShowShareMenu] = useState(false);
@@ -94,6 +105,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     const savedTimeRef = useRef<number>(0);
 
+    
+
     // FIX: Restore time when switching to Transcode stream
     useEffect(() => {
         if (isTranscoding && videoRef.current) {
@@ -113,6 +126,42 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
             };
         }
     }, [isTranscoding]);
+
+    // State for file size
+    const [fileSize, setFileSize] = useState<string | null>(null);
+
+    // --- NEW: Metadata Editing State ---
+    const [isEditing, setIsEditing] = useState(false);
+    const [editTitle, setEditTitle] = useState(video.name);
+    const [editDate, setEditDate] = useState(video.releaseDate || "");
+    const [editTags, setEditTags] = useState(video.genre || "");
+    const [editDescription, setEditDescription] = useState(video.description || ""); 
+
+    // Sync state if the video changes
+    useEffect(() => {
+        setEditTitle(video.name);
+        setEditDate(video.releaseDate || "");
+        setEditTags(video.genre || "");
+        // *** ADD THIS NEW LINE HERE TOO: ***
+        setEditDescription(video.description || ""); 
+        setIsEditing(false);
+    }, [video]);
+
+    // FIX: Fetch file size when video loads
+    useEffect(() => {
+        const fetchSize = async () => {
+            try {
+                // Ask the server for the file header only (lightweight)
+                const res = await fetch(`/api/stream/${video.id}`, { method: 'HEAD' });
+                const size = res.headers.get('content-length');
+                if (size) setFileSize(formatFileSize(parseInt(size)));
+            } catch (e) {
+                console.error("Could not get file size", e);
+                setFileSize(null);
+            }
+        };
+        fetchSize();
+    }, [video.id]);
 
     const handleTouchEnd = (e: React.TouchEvent) => {
         const now = Date.now();
@@ -162,6 +211,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         if (videoRef.current) {
             videoRef.current.load();
             videoRef.current.playbackRate = 1;
+            videoRef.current.muted = false; // <--- ADD THIS LINE to restore audio
+            videoRef.current.volume = 1.0;  // <--- Optional: Reset volume to 100%
         }
     }, [video.id, video.url]);
 
@@ -392,6 +443,43 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
         for (let i = 0; i < videoRef.current.textTracks.length; i++) {
             videoRef.current.textTracks[i].mode = newState ? 'showing' : 'hidden';
+        }
+    };
+
+    const handleSaveMetadata = async () => {
+        try {
+            const res = await fetch(`/api/videos/${video.id}/metadata`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title: editTitle,
+                    date: editDate,
+                    tags: editTags,
+                    description: editDescription // <--- NEW
+                })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                // Update local view
+                onUpdateVideo({ 
+                    ...video, 
+                    name: editTitle, 
+                    releaseDate: editDate, 
+                    genre: editTags,
+                    description: editDescription // <--- NEW
+                });
+                
+                // Optional: Alert user if NFO was skipped
+                if (data.nfoStatus === 'skipped') {
+                    // You could add a toast notification here
+                    console.log("Saved to Database only (External NFO preserved)");
+                }
+                
+                setIsEditing(false);
+            }
+        } catch (e) {
+            alert("Failed to save changes");
         }
     };
 
@@ -757,6 +845,186 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                 }
                             }}
                         />
+                    </div>
+                </div>
+                {/* --- NEW: Smart Metadata Section --- */}
+                <div className="mx-4 md:mx-0 mt-6 p-6 rounded-2xl border border-white/5 bg-white/[0.02] relative group/meta">
+                    
+                    <div className="flex items-center justify-between mb-6 border-b border-white/5 pb-2">
+                        <div className="flex items-center gap-3">
+                            <h3 className="text-xs font-bold text-white/40 uppercase tracking-widest">Metadata</h3>
+                            
+                            {/* NFO STATUS BADGE */}
+                            {(video as any).nfoStatus === 'external' && (
+                                <span className="px-2 py-0.5 rounded bg-yellow-500/10 text-yellow-500 text-[10px] font-bold border border-yellow-500/20">
+                                    External NFO (Locked)
+                                </span>
+                            )}
+                            {(video as any).nfoStatus === 'play21' && (
+                                <span className="px-2 py-0.5 rounded bg-brand-primary/10 text-brand-primary text-[10px] font-bold border border-brand-primary/20">
+                                    Play21 NFO
+                                </span>
+                            )}
+                            {(video as any).nfoStatus === 'none' && (
+                                <span className="px-2 py-0.5 rounded bg-white/5 text-white/40 text-[10px] font-bold border border-white/10">
+                                    No NFO
+                                </span>
+                            )}
+                        </div>
+                        
+                        {/* Edit / Save Buttons */}
+                        {!isEditing ? (
+                            <button 
+                                onClick={() => setIsEditing(true)}
+                                className="text-xs font-bold text-brand-primary hover:text-white transition-colors opacity-0 group-hover/meta:opacity-100"
+                            >
+                                EDIT
+                            </button>
+                        ) : (
+                            <div className="flex gap-3">
+                                <button onClick={() => setIsEditing(false)} className="text-xs font-bold text-red-400 hover:text-red-300">CANCEL</button>
+                                <button onClick={handleSaveMetadata} className="text-xs font-bold text-brand-accent hover:text-white">SAVE</button>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* HELPER TEXT FOR EDIT MODE */}
+                    {isEditing && (
+                        <div className={`mb-6 p-3 rounded-lg border text-[11px] leading-relaxed ${
+                            (video as any).nfoStatus === 'external' 
+                                ? "bg-yellow-500/5 border-yellow-500/10 text-yellow-200/80" 
+                                : "bg-blue-500/5 border-blue-500/10 text-blue-200/80"
+                        }`}>
+                            
+                            {/* CASE 1: External NFO (Locked) */}
+                            {(video as any).nfoStatus === 'external' && (
+                                <span>
+                                    <strong className="block mb-1 text-yellow-500">⚠️ Read-Only Mode</strong>
+                                    NFO data already exists from another application. To prevent data loss, your changes will <strong>only be saved to the Play21 database</strong>. The existing NFO file will not be touched.
+                                </span>
+                            )}
+
+                            {/* CASE 2: Play21 NFO (Update) */}
+                            {(video as any).nfoStatus === 'play21' && (
+                                <span>
+                                    <strong className="block mb-1 text-blue-400">✅ Updating File</strong>
+                                    This video has a Play21-created NFO file. Your changes will be saved to the database and the <strong>existing NFO file will be updated</strong>.
+                                </span>
+                            )}
+
+                            {/* CASE 3: No NFO (Create) */}
+                            {((video as any).nfoStatus === 'none' || !(video as any).nfoStatus) && (
+                                <span>
+                                    <strong className="block mb-1 text-blue-400">✨ Creating File</strong>
+                                    No NFO data found. A <strong>new NFO file will be created</strong> alongside the video to store this metadata permanently.
+                                </span>
+                            )}
+                        </div>
+                    )}
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-8 text-xs">
+                        
+                        {/* Title (Editable) */}
+                        <div className="sm:col-span-2">
+                            <div className="text-glass-subtext mb-1 font-medium">Display Title</div>
+                            {isEditing ? (
+                                <input 
+                                    type="text" 
+                                    value={editTitle}
+                                    onChange={(e) => setEditTitle(e.target.value)}
+                                    className="w-full bg-black/40 border border-white/10 rounded px-2 py-1.5 text-white focus:border-brand-primary outline-none"
+                                />
+                            ) : (
+                                <div className="font-mono text-white/80 break-words">{video.name}</div>
+                            )}
+                        </div>
+
+                        {/* NEW: Description/Plot (Editable) */}
+                        <div className="sm:col-span-2">
+                            <div className="text-glass-subtext mb-1 font-medium">Plot / Description</div>
+                            {isEditing ? (
+                                <textarea 
+                                    value={editDescription}
+                                    onChange={(e) => setEditDescription(e.target.value)}
+                                    rows={3}
+                                    className="w-full bg-black/40 border border-white/10 rounded px-2 py-1.5 text-white focus:border-brand-primary outline-none resize-none"
+                                    placeholder="Enter plot summary..."
+                                />
+                            ) : (
+                                <div className="text-white/60 line-clamp-3 italic">
+                                    {video.description || "No description available"}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Date (Editable) */}
+                        <div>
+                            <div className="text-glass-subtext mb-1 font-medium">Release Date</div>
+                            {isEditing ? (
+                                <input 
+                                    type="date" 
+                                    value={editDate}
+                                    onChange={(e) => setEditDate(e.target.value)}
+                                    className="w-full bg-black/40 border border-white/10 rounded px-2 py-1.5 text-white focus:border-brand-primary outline-none"
+                                />
+                            ) : (
+                                <div className="text-white/80 font-mono">
+                                    {video.releaseDate ? new Date(video.releaseDate).toLocaleDateString('en-US', {
+                                        year: 'numeric',
+                                        month: 'long',
+                                        day: 'numeric',
+                                        timeZone: 'UTC'
+                                    }) : 'Unknown'}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Tags (Editable) */}
+                        <div className="sm:col-span-2">
+                            <div className="text-glass-subtext mb-2 font-medium">Tags (comma separated)</div>
+                            {isEditing ? (
+                                <input 
+                                    type="text" 
+                                    value={editTags}
+                                    onChange={(e) => setEditTags(e.target.value)}
+                                    className="w-full bg-black/40 border border-white/10 rounded px-2 py-1.5 text-white focus:border-brand-primary outline-none"
+                                    placeholder="Action, Sci-Fi, 4K..."
+                                />
+                            ) : (
+                                <div className="flex flex-wrap gap-2">
+                                    {video.genre ? video.genre.split(/[,/]/).map((tag, i) => (
+                                        <button 
+                                            key={i} 
+                                            onClick={() => onTagSelect(tag.trim())}
+                                            className="px-2.5 py-1 rounded-md bg-brand-primary/10 text-brand-primary border border-brand-primary/20 text-[11px] font-medium tracking-wide hover:bg-brand-primary/20 hover:text-white hover:border-brand-primary/40 transition-all cursor-pointer"
+                                        >
+                                            {tag.trim()}
+                                        </button>
+                                    )) : <span className="text-white/20 italic">No tags</span>}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Read-Only Info (Filename, Path, Size) */}
+                        <div className="sm:col-span-2 border-t border-white/5 pt-4 mt-2 grid grid-cols-1 sm:grid-cols-2 gap-6 opacity-60 hover:opacity-100 transition-opacity">
+                            <div>
+                                <div className="text-glass-subtext mb-1 font-medium">Filename</div>
+                                <div className="font-mono text-white/80 break-all select-all">
+                                    {decodeURIComponent((video as any).filename || video.name)}
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-glass-subtext mb-1 font-medium">File Size</div>
+                                <div className="font-mono text-white/80">{fileSize || "Loading..."}</div>
+                            </div>
+                            <div className="sm:col-span-2">
+                                <div className="text-glass-subtext mb-1 font-medium">Full System Path</div>
+                                <div className="font-mono text-white/60 break-all select-all bg-black/20 p-2 rounded border border-white/5">
+                                    {decodeURIComponent(video.path)}
+                                </div>
+                            </div>
+                        </div>
+
                     </div>
                 </div>
             </div>
