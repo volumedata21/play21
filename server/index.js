@@ -28,6 +28,7 @@ if (!fs.existsSync(subsDir)) fs.mkdirSync(subsDir, { recursive: true });
 // ---------------------------------------------------------
 const db = new Database(path.join(dataDir, 'play21.db'));
 db.pragma('journal_mode = WAL');
+db.pragma('busy_timeout = 5000');
 
 // Videos Table
 db.exec(`
@@ -135,6 +136,75 @@ function parseNfo(nfoPath) {
     };
   } catch (e) {
     return null;
+  }
+}
+
+// --- NEW: Helper to find NFO file (Case-Insensitive) ---
+function findNfoFile(videoPath) {
+  const dir = path.dirname(videoPath);
+  const nameNoExt = path.parse(videoPath).name;
+  
+  // 1. Try exact match first (Fastest)
+  const exactPath = path.join(dir, `${nameNoExt}.nfo`);
+  if (fs.existsSync(exactPath)) return exactPath;
+
+  // 2. Try case-insensitive scan (Robust)
+  try {
+    const files = fs.readdirSync(dir);
+    const match = files.find(f => f.toLowerCase() === `${nameNoExt.toLowerCase()}.nfo`);
+    return match ? path.join(dir, match) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// --- NEW: Smart NFO Writer ---
+function writeNfo(videoPath, meta) {
+  try {
+    const dir = path.dirname(videoPath);
+    const nameNoExt = path.parse(videoPath).name;
+
+    // 1. FIND EXISTING FILE (using the smart helper)
+    let nfoPath = findNfoFile(videoPath);
+    const exists = !!nfoPath;
+
+    // If it doesn't exist, we set the default path for creation
+    if (!nfoPath) {
+      nfoPath = path.join(dir, `${nameNoExt}.nfo`);
+    }
+
+    // 2. CHECK EXISTING CONTENT
+    if (exists) {
+      const content = fs.readFileSync(nfoPath, 'utf8');
+      
+      // Check for our signature tag OR the "Local Library" showtitle
+      const isPlay21 = content.includes('<generator>play21</generator>') || 
+                       content.includes('<showtitle>Local Library</showtitle>');
+
+      if (!isPlay21) {
+        console.log(`Skipping NFO write: External NFO detected at ${nfoPath}`);
+        return 'skipped'; 
+      }
+    }
+
+    // 3. Create/Overwrite
+    const xmlContent = `<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<episodedetails>
+  <title>${meta.title || ""}</title>
+  <showtitle>Local Library</showtitle>
+  <generator>play21</generator>
+  <plot>${meta.description || ""}</plot>
+  <aired>${meta.date || ""}</aired>
+  <genre>${meta.tags || ""}</genre>
+  <dateadded>${new Date().toISOString()}</dateadded>
+</episodedetails>`;
+
+    fs.writeFileSync(nfoPath, xmlContent, 'utf8');
+    console.log(`Wrote NFO file: ${nfoPath}`);
+    return 'written';
+  } catch (e) {
+    console.error("Failed to write NFO:", e);
+    return 'error';
   }
 }
 
@@ -621,8 +691,9 @@ app.get('/api/videos', (req, res) => {
   if (search) {
     const tokens = search.trim().split(/\s+/);
     tokens.forEach(token => {
-        conditions.push('(name LIKE ? OR channel LIKE ?)'); 
-        params.push(`%${token}%`, `%${token}%`);
+        // UPDATED: Now searches Name OR Channel OR Genre (Tags)
+        conditions.push('(name LIKE ? OR channel LIKE ? OR genre LIKE ?)'); 
+        params.push(`%${token}%`, `%${token}%`, `%${token}%`);
     });
   }
 
@@ -658,26 +729,84 @@ app.get('/api/videos', (req, res) => {
   }
 });
 
-// --- GET SINGLE VIDEO METADATA (CRITICAL FOR DIRECT LINKING) ---
+// --- UPDATED: Save Metadata ---
+app.post('/api/videos/:id/metadata', (req, res) => {
+  const { id } = req.params;
+  const { title, date, tags, description } = req.body || {}; // Added description
+
+  if (!title || typeof title !== 'string' || title.trim() === '') {
+    return res.status(400).json({ error: "Title is required" });
+  }
+
+  try {
+    const video = db.prepare('SELECT path, description FROM videos WHERE id = ?').get(id);
+    if (!video) return res.status(404).json({ error: "Video not found" });
+
+    // Resolve Path
+    let fullPath = video.path;
+    if (video.path.startsWith('/media')) {
+      const relPath = decodeURIComponent(video.path.replace(/^\/media\//, ''));
+      fullPath = path.join(mediaDir, relPath);
+    }
+
+    // Try to write NFO
+    const nfoResult = writeNfo(fullPath, {
+      title, date, tags, description
+    });
+
+    // Update DB (Always update DB regardless of NFO status)
+    db.prepare(`
+      UPDATE videos 
+      SET name = ?, release_date = ?, genre = ?, description = ?
+      WHERE id = ?
+    `).run(title, date || null, tags || null, description || null, id);
+    
+    res.json({ success: true, nfoStatus: nfoResult });
+  } catch (e) {
+    console.error("Failed to save metadata:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// --- GET SINGLE VIDEO METADATA ---
 app.get('/api/videos/:id', (req, res) => {
   try {
     const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(req.params.id);
     if (!video) return res.status(404).json({ error: "Video not found" });
 
-    // Format it exactly like the list endpoint
+    // --- UPDATED: Check NFO Status (Smart) ---
+    let nfoStatus = 'none';
+    let fullPath = video.path;
+    if (video.path.startsWith('/media')) {
+      const relPath = decodeURIComponent(video.path.replace(/^\/media\//, ''));
+      fullPath = path.join(mediaDir, relPath);
+    }
+    
+    // USE THE HELPER HERE!
+    const nfoPath = findNfoFile(fullPath);
+    
+    if (nfoPath && fs.existsSync(nfoPath)) {
+      const content = fs.readFileSync(nfoPath, 'utf8');
+      const isPlay21 = content.includes('<generator>play21</generator>') || 
+                       content.includes('<showtitle>Local Library</showtitle>');
+      nfoStatus = isPlay21 ? 'play21' : 'external';
+    }
+    // ------------------------------------------
+
     const formatted = {
       ...video,
+      // ... keep the rest of your formatted object same as before ...
       isFavorite: Boolean(video.is_favorite),
       viewsCount: video.views,
       views: `${video.views} views`,
       timeAgo: video.release_date 
-  ? new Date(video.release_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })
-  : new Date(video.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+        ? new Date(video.release_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })
+        : new Date(video.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
       thumbnail: video.thumbnail || null,
       durationStr: formatDuration(video.duration),
       channelAvatar: video.channel_avatar,
-      // Ensure path is exposed for the frontend player
-      path: video.path
+      path: video.path,
+      nfoStatus // <--- SEND TO FRONTEND
     };
 
     res.json(formatted);
