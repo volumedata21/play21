@@ -572,6 +572,40 @@ const allowedOrigins = process.env.ALLOWED_DOMAINS
   ? process.env.ALLOWED_DOMAINS.split(',').map(d => d.trim()) 
   : ['*'];
 
+// ---------------------------------------------------------
+// SECURITY: HOST HEADER CHECK ("THE BOUNCER")
+// ---------------------------------------------------------
+app.use((req, res, next) => {
+  // 1. Get the list of allowed domains (strip http:// protocols)
+  const allowedHosts = process.env.ALLOWED_DOMAINS 
+    ? process.env.ALLOWED_DOMAINS.split(',').map(d => d.trim().replace(/^https?:\/\//, '')) 
+    : [];
+
+  // 2. If wildcard (*) is set or list is empty, let everyone in
+  if (allowedHosts.length === 0 || allowedHosts.includes('*')) return next();
+
+  // 3. Get the incoming Host header (e.g., "play21.example.com" or "192.168.1.50:5521")
+  const incomingHost = req.headers.host;
+
+  const isAllowed = allowedHosts.some(allowed => {
+    // Wildcard Subdomains
+    if (allowed.startsWith('*.')) {
+      const root = allowed.slice(2);
+      return incomingHost.endsWith(root) || incomingHost === root;
+    }
+    // Exact Match
+    return incomingHost === allowed;
+  });
+
+  if (isAllowed) {
+    next();
+  } else {
+    // 4. KICK THEM OUT
+    console.warn(`[Security] Blocked connection with Host header: ${incomingHost}`);
+    res.status(403).send('Forbidden: Access via this hostname is not allowed.');
+  }
+});
+
 app.use(cors({
   origin: (origin, callback) => {
     // 1. Allow requests with no origin (like mobile apps, curl, or same-origin)
