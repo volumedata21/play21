@@ -133,6 +133,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     // --- NEW: Metadata Editing State ---
     const [isEditing, setIsEditing] = useState(false);
     const [editTitle, setEditTitle] = useState(video.name);
+    // NEW: Initialize with current channel or default
+    const [editShowTitle, setEditShowTitle] = useState(video.channel || "Local Library"); 
     const [editDate, setEditDate] = useState(video.releaseDate || "");
     const [editTags, setEditTags] = useState(video.genre || "");
     const [editDescription, setEditDescription] = useState(video.description || ""); 
@@ -140,9 +142,9 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     // Sync state if the video changes
     useEffect(() => {
         setEditTitle(video.name);
+        setEditShowTitle(video.channel || "Local Library"); // <--- Sync here
         setEditDate(video.releaseDate || "");
         setEditTags(video.genre || "");
-        // *** ADD THIS NEW LINE HERE TOO: ***
         setEditDescription(video.description || ""); 
         setIsEditing(false);
     }, [video]);
@@ -453,29 +455,23 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     title: editTitle,
+                    showtitle: editShowTitle, // <--- Send it!
                     date: editDate,
                     tags: editTags,
-                    description: editDescription // <--- NEW
+                    description: editDescription
                 })
             });
 
             if (res.ok) {
                 const data = await res.json();
-                // Update local view
                 onUpdateVideo({ 
                     ...video, 
                     name: editTitle, 
+                    channel: editShowTitle, // <--- Update local view instantly
                     releaseDate: editDate, 
                     genre: editTags,
-                    description: editDescription // <--- NEW
+                    description: editDescription
                 });
-                
-                // Optional: Alert user if NFO was skipped
-                if (data.nfoStatus === 'skipped') {
-                    // You could add a toast notification here
-                    console.log("Saved to Database only (External NFO preserved)");
-                }
-                
                 setIsEditing(false);
             }
         } catch (e) {
@@ -924,19 +920,38 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-8 text-xs">
                         
-                        {/* Title (Editable) */}
-                        <div className="sm:col-span-2">
-                            <div className="text-glass-subtext mb-1 font-medium">Display Title</div>
-                            {isEditing ? (
-                                <input 
-                                    type="text" 
-                                    value={editTitle}
-                                    onChange={(e) => setEditTitle(e.target.value)}
-                                    className="w-full bg-black/40 border border-white/10 rounded px-2 py-1.5 text-white focus:border-brand-primary outline-none"
-                                />
-                            ) : (
-                                <div className="font-mono text-white/80 break-words">{video.name}</div>
-                            )}
+                        {/* Title & Show Title Row */}
+                        <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
+                            {/* Title (Editable) */}
+                            <div>
+                                <div className="text-glass-subtext mb-1 font-medium">Display Title</div>
+                                {isEditing ? (
+                                    <input 
+                                        type="text" 
+                                        value={editTitle}
+                                        onChange={(e) => setEditTitle(e.target.value)}
+                                        className="w-full bg-black/40 border border-white/10 rounded px-2 py-1.5 text-white focus:border-brand-primary outline-none"
+                                    />
+                                ) : (
+                                    <div className="font-mono text-white/80 break-words">{video.name}</div>
+                                )}
+                            </div>
+
+                            {/* NEW: Show Title (Editable) */}
+                            <div>
+                                <div className="text-glass-subtext mb-1 font-medium">Show / Channel</div>
+                                {isEditing ? (
+                                    <input 
+                                        type="text" 
+                                        value={editShowTitle}
+                                        onChange={(e) => setEditShowTitle(e.target.value)}
+                                        className="w-full bg-black/40 border border-white/10 rounded px-2 py-1.5 text-white focus:border-brand-primary outline-none"
+                                        placeholder="e.g. Rick Beato"
+                                    />
+                                ) : (
+                                    <div className="font-mono text-white/80 break-words">{video.channel || "Local Library"}</div>
+                                )}
+                            </div>
                         </div>
 
                         {/* NEW: Description/Plot (Editable) */}
