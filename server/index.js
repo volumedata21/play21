@@ -143,7 +143,7 @@ function parseNfo(nfoPath) {
 function findNfoFile(videoPath) {
   const dir = path.dirname(videoPath);
   const nameNoExt = path.parse(videoPath).name;
-  
+
   // 1. Try exact match first (Fastest)
   const exactPath = path.join(dir, `${nameNoExt}.nfo`);
   if (fs.existsSync(exactPath)) return exactPath;
@@ -176,22 +176,23 @@ function writeNfo(videoPath, meta) {
     // 2. CHECK EXISTING CONTENT
     if (exists) {
       const content = fs.readFileSync(nfoPath, 'utf8');
-      
+
       // Check for our signature tag OR the "Local Library" showtitle
-      const isPlay21 = content.includes('<generator>play21</generator>') || 
-                       content.includes('<showtitle>Local Library</showtitle>');
+      const isPlay21 = content.includes('<generator>play21</generator>') ||
+        content.includes('<showtitle>Local Library</showtitle>');
 
       if (!isPlay21) {
         console.log(`Skipping NFO write: External NFO detected at ${nfoPath}`);
-        return 'skipped'; 
+        return 'skipped';
       }
     }
 
     // 3. Create/Overwrite
+    // 3. Create/Overwrite
     const xmlContent = `<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
 <episodedetails>
   <title>${meta.title || ""}</title>
-  <showtitle>Local Library</showtitle>
+  <showtitle>${meta.showtitle || "Local Library"}</showtitle> 
   <generator>play21</generator>
   <plot>${meta.description || ""}</plot>
   <aired>${meta.date || ""}</aired>
@@ -277,7 +278,7 @@ function generateThumbnail(videoPath, videoId) {
         timestamps: ['10%'],
         filename: outputFilename,
         folder: thumbnailsDir,
-        size: '?x720' 
+        size: '?x720'
       });
   });
 }
@@ -287,11 +288,11 @@ function getVideoMetadata(path) {
   return new Promise((resolve) => {
     ffmpeg.ffprobe(path, (err, data) => {
       if (err) return resolve({ duration: 0, tags: {} });
-      
+
       // FFmpeg normalizes most tags, but we default to empty object if missing
       const tags = data.format.tags || {};
       const duration = data.format.duration || 0;
-      
+
       resolve({ duration, tags });
     });
   });
@@ -434,8 +435,8 @@ async function scanMedia(forceRefresh = false) {
 
           insertStmt.run(
             id,
-            path.basename(fullPath, path.extname(fullPath)), 
-            path.basename(fullPath), 
+            path.basename(fullPath, path.extname(fullPath)),
+            path.basename(fullPath),
             folderName,
             webPath,
             Math.floor(stats.birthtimeMs),
@@ -447,7 +448,7 @@ async function scanMedia(forceRefresh = false) {
 
     // Run the transaction
     runPhase1(validFiles);
-    
+
     console.log("Phase 1 complete: Videos are visible in UI.");
 
     // --- PHASE 2: DEEP SCAN (Duration, Thumbs, NFO) ---
@@ -484,19 +485,19 @@ async function scanMedia(forceRefresh = false) {
 
         const dir = path.dirname(fullPath);
         const baseName = path.parse(fullPath).name;
-        
+
         // D. METADATA STRATEGY (Waterfall)
         // 1. Default to "smart" filename parsing
         const stats = fs.statSync(fullPath);
         const fileDate = new Date(stats.birthtimeMs).toISOString().split('T')[0];
-        
-        let meta = { 
-            title: baseName, // Default to filename
-            plot: null, 
-            channel: "Local Library", 
-            genre: null, 
-            aired: fileDate,
-            youtubeId: null
+
+        let meta = {
+          title: baseName, // Default to filename
+          plot: null,
+          channel: "Local Library",
+          genre: null,
+          aired: fileDate,
+          youtubeId: null
         };
 
         // 2. Override with Embedded Tags (if they exist)
@@ -505,8 +506,8 @@ async function scanMedia(forceRefresh = false) {
         if (tags.genre) meta.genre = tags.genre;
         if (tags.artist || tags.album_artist || tags.composer) meta.channel = tags.artist || tags.album_artist || tags.composer;
         if (tags.date || tags.creation_time) {
-            const rawDate = tags.date || tags.creation_time;
-            if (rawDate.includes('-')) meta.aired = rawDate.split('T')[0];
+          const rawDate = tags.date || tags.creation_time;
+          if (rawDate.includes('-')) meta.aired = rawDate.split('T')[0];
         }
 
         // 3. Override with NFO (Highest Priority)
@@ -568,8 +569,8 @@ app.use(express.json({ limit: '50mb' }));
 // CORS CONFIGURATION
 // ---------------------------------------------------------
 // Parse allowed domains from ENV, default to '*' if not set
-const allowedOrigins = process.env.ALLOWED_DOMAINS 
-  ? process.env.ALLOWED_DOMAINS.split(',').map(d => d.trim()) 
+const allowedOrigins = process.env.ALLOWED_DOMAINS
+  ? process.env.ALLOWED_DOMAINS.split(',').map(d => d.trim())
   : ['*'];
 
 // ---------------------------------------------------------
@@ -577,8 +578,8 @@ const allowedOrigins = process.env.ALLOWED_DOMAINS
 // ---------------------------------------------------------
 app.use((req, res, next) => {
   // 1. Get the list of allowed domains (strip http:// protocols)
-  const allowedHosts = process.env.ALLOWED_DOMAINS 
-    ? process.env.ALLOWED_DOMAINS.split(',').map(d => d.trim().replace(/^https?:\/\//, '')) 
+  const allowedHosts = process.env.ALLOWED_DOMAINS
+    ? process.env.ALLOWED_DOMAINS.split(',').map(d => d.trim().replace(/^https?:\/\//, ''))
     : [];
 
   // 2. If wildcard (*) is set or list is empty, let everyone in
@@ -651,7 +652,7 @@ app.use('/subtitles', express.static(subsDir));
 app.get('/api/discovery/random', (req, res) => {
   try {
     const { hideHidden } = req.query;
-    
+
     // Default base query
     let sql = 'SELECT * FROM videos';
 
@@ -676,7 +677,7 @@ app.get('/api/videos', (req, res) => {
   const offset = (parseInt(page) - 1) * parseInt(limit);
 
   let orderBy = 'release_date DESC';
-  
+
   // Standard Sorts
   if (sort === 'Name (A-Z)') orderBy = 'name ASC';
   if (sort === 'Name (Z-A)') orderBy = 'name DESC';
@@ -696,13 +697,13 @@ app.get('/api/videos', (req, res) => {
     // JOIN allows us to only fetch videos linked to this playlist
     queryStr = 'SELECT videos.*, playlist_videos.added_at FROM videos JOIN playlist_videos ON videos.id = playlist_videos.video_id';
     countQuery = 'SELECT COUNT(*) as total FROM videos JOIN playlist_videos ON videos.id = playlist_videos.video_id';
-    
+
     conditions.push('playlist_videos.playlist_id = ?');
     params.push(playlist);
-    
+
     // Override sort to show most recently added to playlist first
     orderBy = 'playlist_videos.added_at DESC';
-  } 
+  }
   else if (history === 'true') {
     queryStr = 'SELECT videos.*, history.watched_at FROM videos JOIN history ON videos.id = history.video_id';
     countQuery = 'SELECT COUNT(*) as total FROM videos JOIN history ON videos.id = history.video_id';
@@ -716,8 +717,8 @@ app.get('/api/videos', (req, res) => {
     }
     if (favorites === 'true') conditions.push('is_favorite = 1');
     if (folder) {
-        conditions.push('(folder = ? OR folder LIKE ?)');
-        params.push(folder, `${folder}/%`);
+      conditions.push('(folder = ? OR folder LIKE ?)');
+      params.push(folder, `${folder}/%`);
     }
   }
 
@@ -725,9 +726,9 @@ app.get('/api/videos', (req, res) => {
   if (search) {
     const tokens = search.trim().split(/\s+/);
     tokens.forEach(token => {
-        // UPDATED: Now searches Name OR Channel OR Genre (Tags)
-        conditions.push('(name LIKE ? OR channel LIKE ? OR genre LIKE ?)'); 
-        params.push(`%${token}%`, `%${token}%`, `%${token}%`);
+      // UPDATED: Now searches Name OR Channel OR Genre (Tags)
+      conditions.push('(name LIKE ? OR channel LIKE ? OR genre LIKE ?)');
+      params.push(`%${token}%`, `%${token}%`, `%${token}%`);
     });
   }
 
@@ -747,7 +748,7 @@ app.get('/api/videos', (req, res) => {
       ...v,
       isFavorite: Boolean(v.is_favorite),
       views: `${v.views} views`,
-      timeAgo: v.release_date 
+      timeAgo: v.release_date
         ? new Date(v.release_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' })
         : new Date(v.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
       durationStr: formatDuration(v.duration),
@@ -764,9 +765,11 @@ app.get('/api/videos', (req, res) => {
 });
 
 // --- UPDATED: Save Metadata ---
+// --- UPDATED: Save Metadata ---
 app.post('/api/videos/:id/metadata', (req, res) => {
   const { id } = req.params;
-  const { title, date, tags, description } = req.body || {}; // Added description
+  // 1. Accept showtitle from the frontend
+  const { title, date, tags, description, showtitle } = req.body || {}; 
 
   if (!title || typeof title !== 'string' || title.trim() === '') {
     return res.status(400).json({ error: "Title is required" });
@@ -783,17 +786,17 @@ app.post('/api/videos/:id/metadata', (req, res) => {
       fullPath = path.join(mediaDir, relPath);
     }
 
-    // Try to write NFO
+    // 2. Pass showtitle to the NFO writer
     const nfoResult = writeNfo(fullPath, {
-      title, date, tags, description
+      title, date, tags, description, showtitle
     });
 
-    // Update DB (Always update DB regardless of NFO status)
+    // 3. Update DB (Map showtitle -> channel)
     db.prepare(`
       UPDATE videos 
-      SET name = ?, release_date = ?, genre = ?, description = ?
+      SET name = ?, release_date = ?, genre = ?, description = ?, channel = ?
       WHERE id = ?
-    `).run(title, date || null, tags || null, description || null, id);
+    `).run(title, date || null, tags || null, description || null, showtitle || "Local Library", id);
     
     res.json({ success: true, nfoStatus: nfoResult });
   } catch (e) {
@@ -815,14 +818,14 @@ app.get('/api/videos/:id', (req, res) => {
       const relPath = decodeURIComponent(video.path.replace(/^\/media\//, ''));
       fullPath = path.join(mediaDir, relPath);
     }
-    
+
     // USE THE HELPER HERE!
     const nfoPath = findNfoFile(fullPath);
-    
+
     if (nfoPath && fs.existsSync(nfoPath)) {
       const content = fs.readFileSync(nfoPath, 'utf8');
-      const isPlay21 = content.includes('<generator>play21</generator>') || 
-                       content.includes('<showtitle>Local Library</showtitle>');
+      const isPlay21 = content.includes('<generator>play21</generator>') ||
+        content.includes('<showtitle>Local Library</showtitle>');
       nfoStatus = isPlay21 ? 'play21' : 'external';
     }
     // ------------------------------------------
@@ -833,7 +836,7 @@ app.get('/api/videos/:id', (req, res) => {
       isFavorite: Boolean(video.is_favorite),
       viewsCount: video.views,
       views: `${video.views} views`,
-      timeAgo: video.release_date 
+      timeAgo: video.release_date
         ? new Date(video.release_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })
         : new Date(video.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
       thumbnail: video.thumbnail || null,
@@ -880,14 +883,14 @@ app.get('/api/stream/:id', async (req, res) => {
       const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
       const chunksize = (end - start) + 1;
       const file = fs.createReadStream(fullPath, { start, end });
-      
+
       const head = {
         'Content-Range': `bytes ${start}-${end}/${fileSize}`,
         'Accept-Ranges': 'bytes',
         'Content-Length': chunksize,
         'Content-Type': 'video/mp4',
       };
-      
+
       res.writeHead(206, head);
       file.pipe(res);
     } else {
@@ -1055,7 +1058,7 @@ app.get('/api/folders', (req, res) => {
       .map(dirent => {
         const folderName = dirent.name;
         const fullFolderPath = path.join(dirPath, folderName);
-        
+
         // List of image names we want to look for
         const imageNames = ['folder.jpg', 'poster.jpg', 'channel.jpg', 'cover.jpg', 'fanart.jpg', 'folder.png', 'logo.png'];
         let foundImage = null;
@@ -1064,7 +1067,7 @@ app.get('/api/folders', (req, res) => {
           const filesInFolder = fs.readdirSync(fullFolderPath);
           // Case-insensitive match
           const match = imageNames.find(img => filesInFolder.map(f => f.toLowerCase()).includes(img));
-          
+
           if (match) {
             // Create a URL for the frontend
             const safeParent = parent ? parent.split('/').map(encodeURIComponent).join('/') : '';
@@ -1089,18 +1092,18 @@ app.get('/api/folders', (req, res) => {
 
 // --- HELPER: Serve the Folder Images ---
 app.get('/api/stream/:folder/:image', (req, res) => {
-    const folder = decodeURIComponent(req.params.folder);
-    const image = req.params.image;
-    const parent = req.query.folderContext ? decodeURIComponent(req.query.folderContext) : '';
-    
-    // Construct path to the image on disk
-    const imagePath = path.join(mediaDir, parent, folder, image);
-    
-    if (fs.existsSync(imagePath)) {
-        res.sendFile(imagePath);
-    } else {
-        res.status(404).send('Not found');
-    }
+  const folder = decodeURIComponent(req.params.folder);
+  const image = req.params.image;
+  const parent = req.query.folderContext ? decodeURIComponent(req.query.folderContext) : '';
+
+  // Construct path to the image on disk
+  const imagePath = path.join(mediaDir, parent, folder, image);
+
+  if (fs.existsSync(imagePath)) {
+    res.sendFile(imagePath);
+  } else {
+    res.status(404).send('Not found');
+  }
 });
 
 // Remove a video from a specific playlist
@@ -1157,9 +1160,9 @@ app.get('/api/transcode/:id', (req, res) => {
       '-hwaccel_device /dev/dri/renderD128',
       '-hwaccel_output_format vaapi',
       '-noautorotate',
-      
+
       // LATENCY FIX: Reduce analysis time to speed up start (default is 5000000)
-      '-analyzeduration 10000000', 
+      '-analyzeduration 10000000',
       '-probesize 10000000'
     ])
     // --- OUTPUT OPTIONS ---
@@ -1168,13 +1171,13 @@ app.get('/api/transcode/:id', (req, res) => {
       '-vf scale_vaapi=format=nv12',
 
       '-c:v h264_vaapi',
-      
+
       // QUALITY FIX: Increase Bitrate & Buffer
       '-rc_mode VBR',
       '-b:v 8M',        // Bump from 5M to 8M for cleaner image
       '-maxrate 12M',   // Allow bursts up to 12M for complex scenes
       '-bufsize 24M',   // Larger buffer helps smooth out quality drops
-      
+
       // AUDIO FIX: Better audio quality and force stereo (safer for browsers)
       '-c:a aac',
       '-b:a 192k',
@@ -1199,18 +1202,18 @@ app.get('/api/transcode/:id', (req, res) => {
   command.pipe(res, { end: true });
 });
 
-  // --- MANUAL SCAN ROUTE ---
+// --- MANUAL SCAN ROUTE ---
 app.post('/api/scan', (req, res) => {
   if (isScanning) {
     return res.status(409).json({ error: "Scan already in progress" });
   }
-  
+
   // Check if frontend asked for a 'full' scan
   const isFullScan = req.body.type === 'full';
-  
+
   // Run in background
   scanMedia(isFullScan);
-  
+
   res.json({ success: true, message: isFullScan ? "Full scan started" : "Quick scan started" });
 });
 
