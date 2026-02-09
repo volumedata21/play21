@@ -660,16 +660,11 @@ app.use(cors({
       }
 
       // C. Exact Match (Smart Protocol Handling) - GOLD STANDARD FIX
-      // Allows "mysite.com" to match "https://mysite.com" automatically
       if (allowed === origin) return true;
       if (`https://${allowed}` === origin) return true;
       if (`http://${allowed}` === origin) return true;
 
       return false;
-    });
-
-      // C. Exact Match (User should provide full origin e.g. "https://myapp.com")
-      return origin === allowed;
     });
 
     if (isAllowed) {
@@ -680,7 +675,7 @@ app.use(cors({
     }
   },
   methods: ['GET', 'POST', 'DELETE', 'UPDATE', 'PUT', 'PATCH'],
-  credentials: true // Required to allow cookies/headers across domains
+  credentials: true 
 }));
 
 app.use('/media', express.static(mediaDir));
