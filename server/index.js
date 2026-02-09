@@ -381,7 +381,6 @@ function getFilesRecursively(dir) {
 }
 
 // GLOBAL STATE: prevent double scanning
-// GLOBAL STATE: prevent double scanning
 let isScanning = false;
 
 async function scanMedia(forceRefresh = false) {
@@ -420,7 +419,6 @@ async function scanMedia(forceRefresh = false) {
     `);
 
     // --- PHASE 1: INSTANT INSERT (OPTIMIZED) ---
-    // We wrap the loop in a transaction to prevent database locking and speed up inserts 100x
     const runPhase1 = db.transaction((filesToScan) => {
       for (const fullPath of filesToScan) {
         const relativePath = path.relative(mediaDir, fullPath);
@@ -446,9 +444,7 @@ async function scanMedia(forceRefresh = false) {
       }
     });
 
-    // Run the transaction
     runPhase1(validFiles);
-
     console.log("Phase 1 complete: Videos are visible in UI.");
 
     // --- PHASE 2: DEEP SCAN (Duration, Thumbs, NFO) ---
@@ -456,7 +452,7 @@ async function scanMedia(forceRefresh = false) {
       const relativePath = path.relative(mediaDir, fullPath);
       const id = `vid-${relativePath.replace(/[^a-zA-Z0-9]/g, '_')}`;
 
-      // CRITICAL CHECK: Skip if we have data AND we are NOT forcing a refresh
+      // Skip if we have data AND we are NOT forcing a refresh
       const existing = checkStmt.get(id);
       if (!forceRefresh && existing && existing.duration) continue;
 
@@ -472,7 +468,6 @@ async function scanMedia(forceRefresh = false) {
           if (localThumb) {
             thumbUrl = '/media/' + path.relative(mediaDir, localThumb).split(path.sep).map(encodeURIComponent).join('/');
           } else {
-            // Generate
             thumbUrl = await generateThumbnail(fullPath, id);
           }
         }
@@ -486,13 +481,12 @@ async function scanMedia(forceRefresh = false) {
         const dir = path.dirname(fullPath);
         const baseName = path.parse(fullPath).name;
 
-        // D. METADATA STRATEGY (Waterfall)
-        // 1. Default to "smart" filename parsing
+        // D. METADATA STRATEGY
         const stats = fs.statSync(fullPath);
         const fileDate = new Date(stats.birthtimeMs).toISOString().split('T')[0];
 
         let meta = {
-          title: baseName, // Default to filename
+          title: baseName, 
           plot: null,
           channel: "Local Library",
           genre: null,
@@ -500,17 +494,12 @@ async function scanMedia(forceRefresh = false) {
           youtubeId: null
         };
 
-        // 2. Override with Embedded Tags (if they exist)
         if (tags.title) meta.title = tags.title;
-        if (tags.description || tags.comment || tags.synopsis) meta.plot = tags.description || tags.comment || tags.synopsis;
+        if (tags.description) meta.plot = tags.description;
         if (tags.genre) meta.genre = tags.genre;
-        if (tags.artist || tags.album_artist || tags.composer) meta.channel = tags.artist || tags.album_artist || tags.composer;
-        if (tags.date || tags.creation_time) {
-          const rawDate = tags.date || tags.creation_time;
-          if (rawDate.includes('-')) meta.aired = rawDate.split('T')[0];
-        }
+        if (tags.artist) meta.channel = tags.artist;
+        if (tags.date) meta.aired = tags.date.split('T')[0];
 
-        // 3. Override with NFO (Highest Priority)
         const filesInDir = fs.readdirSync(dir);
         const actualNfoFile = filesInDir.find(f =>
           f.toLowerCase() === `${baseName.toLowerCase()}.nfo`
@@ -529,10 +518,8 @@ async function scanMedia(forceRefresh = false) {
           }
         }
 
-        // E. CHANNEL AVATAR
         const channelAvatarUrl = findChannelAvatar(path.dirname(fullPath));
 
-        // UPDATE RECORD
         updateMetaStmt.run(
           Math.floor(duration),
           thumbUrl,
@@ -550,7 +537,51 @@ async function scanMedia(forceRefresh = false) {
       } catch (e) {
         console.error(`Failed to process metadata for ${id}`, e);
       }
-    } // <--- This correctly closes the 'for' loop now
+    }
+
+    // --- PHASE 3: THE JANITOR (Garbage Collection) ---
+    // Safety Check: Don't wipe DB if drive is unmounted (0 files found)
+    if (validFiles.length > 0) {
+        console.log("Starting Janitor cleanup...");
+        
+        // 1. Generate a Set of all IDs currently found on disk
+        const foundIds = new Set();
+        for (const fullPath of validFiles) {
+          const relativePath = path.relative(mediaDir, fullPath);
+          const id = `vid-${relativePath.replace(/[^a-zA-Z0-9]/g, '_')}`;
+          foundIds.add(id);
+        }
+
+        // 2. Get all IDs currently in the database
+        const allDbRows = db.prepare('SELECT id FROM videos').all();
+        const idsToDelete = [];
+
+        for (const row of allDbRows) {
+          if (!foundIds.has(row.id)) {
+            idsToDelete.push(row.id);
+          }
+        }
+
+        // 3. Delete the ghosts
+        if (idsToDelete.length > 0) {
+          console.log(`Janitor found ${idsToDelete.length} missing files. Cleaning up...`);
+          
+          const deleteStmt = db.prepare('DELETE FROM videos WHERE id = ?');
+          
+          const runJanitor = db.transaction((ids) => {
+            for (const id of ids) {
+              deleteStmt.run(id);
+              console.log(`Removed missing video: ${id}`);
+            }
+          });
+          
+          runJanitor(idsToDelete);
+        } else {
+          console.log("Janitor: Library is clean.");
+        }
+    } else {
+        console.warn("Janitor: No files found in media directory. Skipping cleanup to prevent accidental wipe.");
+    }
 
     console.log(`Deep scan complete.`);
   } catch (e) {
@@ -1229,6 +1260,19 @@ process.on('SIGTERM', cleanup);
 
 // Run scan on startup
 scanMedia();
+
+// --- NEW: SCHEDULED HOURLY SCAN ---
+const SCAN_INTERVAL_MS = 60 * 60 * 1000; // 1 Hour (in milliseconds)
+
+setInterval(() => {
+  if (!isScanning) {
+    console.log("⏰ Starting scheduled hourly library scan...");
+    // We pass 'false' to do a "Quick Scan" (only adds new files, doesn't re-process existing valid ones)
+    scanMedia(false); 
+  } else {
+    console.log("⏰ Skipping scheduled scan (Scan already in progress)");
+  }
+}, SCAN_INTERVAL_MS);
 
 const distPath = path.join(process.cwd(), 'dist');
 if (fs.existsSync(distPath)) {
