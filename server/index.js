@@ -650,15 +650,23 @@ app.use(cors({
 
       // B. Wildcard Subdomains (e.g., *.example.com)
       if (allowed.startsWith('*.')) {
-        const domainRoot = allowed.slice(2); // Remove "*." to get "example.com"
+        const domainRoot = allowed.slice(2);
         try {
           const originHostname = new URL(origin).hostname;
-          // Matches "sub.example.com" OR "example.com"
           return originHostname.endsWith('.' + domainRoot) || originHostname === domainRoot;
         } catch (e) {
           return false;
         }
       }
+
+      // C. Exact Match (Smart Protocol Handling) - GOLD STANDARD FIX
+      // Allows "mysite.com" to match "https://mysite.com" automatically
+      if (allowed === origin) return true;
+      if (`https://${allowed}` === origin) return true;
+      if (`http://${allowed}` === origin) return true;
+
+      return false;
+    });
 
       // C. Exact Match (User should provide full origin e.g. "https://myapp.com")
       return origin === allowed;
