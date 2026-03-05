@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { VideoFile, Playlist } from '../types';
-import { LikeIcon, ShareIcon, MenuIcon, CameraIcon, StarIcon, YouTubeIcon, StepBackIcon, StepForwardIcon, PlaylistPlusIcon, NextVideoIcon, HistoryIcon, PrevVideoIcon, SpeedIcon, CCIcon, DownloadIcon, LinkIcon, XIcon, AutoplayIcon } from './Icons';
+import { LikeIcon, ShareIcon, MenuIcon, CameraIcon, StarIcon, YouTubeIcon, StepBackIcon, StepForwardIcon, PlaylistPlusIcon, NextVideoIcon, HistoryIcon, PrevVideoIcon, SpeedIcon, CCIcon, DownloadIcon, LinkIcon, XIcon, AutoplayIcon, LoopIcon} from './Icons';
 import { formatViews, formatTimeAgo } from '../services/fileService';
 
 interface VideoPlayerProps {
@@ -90,6 +90,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const [playbackSpeed, setPlaybackSpeed] = useState(1);
     const [subtitlesEnabled, setSubtitlesEnabled] = useState(false);
     const [isAutoplayEnabled, setIsAutoplayEnabled] = useState(true);
+    const [isLooping, setIsLooping] = useState(false);
     const [countdown, setCountdown] = useState<number | null>(null);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
     const [isTranscoding, setIsTranscoding] = useState(false);
@@ -512,6 +513,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             src={isTranscoding ? `/api/transcode/${video.id}` : `/api/stream/${video.id}`}
                             controls
                             autoPlay
+                            loop={isLooping}
                             crossOrigin="anonymous"
                             className="relative z-10 w-full h-full object-contain"
                             onPause={saveProgress}
@@ -665,13 +667,22 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             <CCIcon />
                         </button>
 
-                        {/* --- NEW: AUTOPLAY TOGGLE --- */}
+                        {/* --- AUTOPLAY TOGGLE --- */}
                         <button
                             onClick={() => setIsAutoplayEnabled(!isAutoplayEnabled)}
                             className={`glass-button p-2 rounded-lg transition-all ${isAutoplayEnabled ? 'text-brand-primary bg-brand-primary/10 border-brand-primary/30' : 'text-glass-subtext hover:text-white'}`}
                             title={isAutoplayEnabled ? "Autoplay is ON" : "Autoplay is OFF"}
                         >
                             <AutoplayIcon />
+                        </button>
+
+                        {/* --- LOOP TOGGLE --- */}
+                        <button
+                            onClick={() => setIsLooping(!isLooping)}
+                            className={`glass-button p-2 rounded-lg transition-all ${isLooping ? 'text-brand-primary bg-brand-primary/10 border-brand-primary/30' : 'text-glass-subtext hover:text-white'}`}
+                            title={isLooping ? "Loop is ON" : "Loop is OFF"}
+                        >
+                            <LoopIcon />
                         </button>
 
                         <div className="w-px h-6 bg-white/10 mx-1"></div>
