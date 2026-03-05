@@ -756,6 +756,41 @@ app.get('/api/videos', (req, res) => {
     }
   }
 
+  // --- DOWNLOAD ROUTE (NEW) ---
+app.get('/api/download/:id', async (req, res) => {
+  try {
+    const video = db.prepare('SELECT path, filename FROM videos WHERE id = ?').get(req.params.id);
+    if (!video) return res.status(404).send('Not found');
+
+    let fullPath = video.path;
+    if (video.path.startsWith('/media')) {
+      const relPath = decodeURIComponent(video.path.replace(/^\/media\//, ''));
+      fullPath = path.join(mediaDir, relPath);
+    }
+
+    // Verify the file actually exists on disk before trying to send it
+    try {
+      await fs.promises.access(fullPath, fs.constants.F_OK);
+    } catch (e) {
+      return res.status(404).send('File missing');
+    }
+
+    // Use the original filename from the database, or extract it from the path
+    const downloadName = video.filename || path.basename(fullPath);
+
+    // res.download automatically sets the correct headers to force a file download
+    res.download(fullPath, downloadName, (err) => {
+        if (err && !res.headersSent) {
+            console.error("Download error:", err);
+            res.status(500).send("Error downloading file");
+        }
+    });
+  } catch (err) {
+    console.error("Download route error:", err);
+    if (!res.headersSent) res.status(500).send('Download Error');
+  }
+});
+
   // --- 2. SEARCH (Applies to all views) ---
   if (search) {
     const tokens = search.trim().split(/\s+/);

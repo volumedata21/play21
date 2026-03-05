@@ -756,6 +756,19 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                 <HistoryIcon />
                             </button>
 
+                            {/* --- NEW: DOWNLOAD BUTTON --- */}
+                            <a
+                                href={`/api/download/${video.id}`}
+                                download
+                                className="flex items-center justify-center glass-button p-2.5 rounded-full text-glass-subtext hover:text-white hover:bg-white/10 transition-all"
+                                title="Download Original File"
+                            >
+                                <DownloadIcon />
+                            </a>
+
+                            {/* Playlist Menu */}
+                            <div className="relative"></div>
+
                             {/* Playlist Menu */}
                             <div className="relative">
                                 <button
