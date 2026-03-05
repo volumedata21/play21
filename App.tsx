@@ -595,34 +595,45 @@ const AppContent = () => {
         }));
     };
 
-    const handleRenamePlaylist = async () => {
-        if (!selectedPlaylistId) return;
-
-        const currentPlaylist = playlists.find(p => p.id === selectedPlaylistId);
-        if (!currentPlaylist || currentPlaylist.name === 'Watch Later') return;
-
-        const newName = window.prompt("Enter new playlist name:", currentPlaylist.name);
-
-        if (newName && newName.trim() !== '' && newName !== currentPlaylist.name) {
+    const handleRenamePlaylist = async (id: string, currentName: string) => {
+        const newName = window.prompt("Enter new playlist name:", currentName);
+        
+        if (newName && newName.trim() !== '' && newName !== currentName) {
             try {
-                const res = await fetch(`/api/playlists/${selectedPlaylistId}`, {
+                const res = await fetch(`/api/playlists/${id}`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name: newName.trim() })
                 });
-
+                
                 const data = await res.json();
-
                 if (data.success) {
-                    // Update the local state so the UI changes instantly
-                    setPlaylists(prev => prev.map(p =>
-                        p.id === selectedPlaylistId ? { ...p, name: newName.trim() } : p
+                    setPlaylists(prev => prev.map(p => 
+                        p.id === id ? { ...p, name: newName.trim() } : p
                     ));
-                } else {
-                    alert(data.error || "Failed to rename playlist");
                 }
             } catch (e) {
                 console.error("Rename error", e);
+            }
+        }
+    };
+
+    const handleDeletePlaylist = async (id: string, name: string) => {
+        if (window.confirm(`Are you sure you want to delete the playlist "${name}"?`)) {
+            try {
+                const res = await fetch(`/api/playlists/${id}`, { method: 'DELETE' });
+                const data = await res.json();
+                
+                if (data.success) {
+                    setPlaylists(prev => prev.filter(p => p.id !== id));
+                    
+                    // If the user was currently looking at the deleted playlist, kick them to Home
+                    if (selectedPlaylistId === id) {
+                        navigate('/');
+                    }
+                }
+            } catch (e) {
+                console.error("Delete error", e);
             }
         }
     };
@@ -751,6 +762,8 @@ const AppContent = () => {
                     onSelectView={handleSidebarViewChange}
                     onSelectPlaylist={handleSidebarPlaylistSelect}
                     onCreatePlaylist={handleCreatePlaylist}
+                    onRenamePlaylist={handleRenamePlaylist}
+                    onDeletePlaylist={handleDeletePlaylist}
                     onOpenSettings={() => setIsSettingsOpen(true)}
                     onClose={() => setIsSidebarOpen(false)}
                 />
@@ -799,11 +812,16 @@ const AppContent = () => {
                                     <span className="text-sm text-glass-subtext">{totalCount} videos</span>
 
                                     {/* --- NEW: RENAME BUTTON --- */}
+                                    {/* --- NEW: RENAME BUTTON --- */}
                                     {viewState === ViewState.PLAYLIST &&
                                         selectedPlaylistId &&
                                         playlists.find(p => p.id === selectedPlaylistId)?.name !== 'Watch Later' && (
                                             <button
-                                                onClick={handleRenamePlaylist}
+                                                // FIX: Added the arrow function to pass the right arguments!
+                                                onClick={() => {
+                                                    const currentPl = playlists.find(p => p.id === selectedPlaylistId);
+                                                    if (currentPl) handleRenamePlaylist(selectedPlaylistId, currentPl.name);
+                                                }}
                                                 className="ml-2 text-[10px] font-bold tracking-wider text-brand-primary hover:text-white transition-colors px-2.5 py-1 rounded-md bg-brand-primary/10 border border-brand-primary/20 hover:bg-brand-primary/40 active:scale-95"
                                             >
                                                 RENAME
