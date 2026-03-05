@@ -57,7 +57,7 @@ const AppContent = () => {
                 // Pass the current setting to the backend
                 const res = await fetch(`/api/discovery/random?hideHidden=${appSettings.hideHiddenFiles}`);
                 const data = await res.json();
-                
+
                 // FIX: Added the 'if' check back so the closing bracket '}' below matches something
                 if (data.success) {
                     const mapped = data.videos.map((v: any) => ({
@@ -276,7 +276,7 @@ const AppContent = () => {
             setCurrentSubFolders([]);
         }
         // Note: We removed 'searchTerm' from this dependency array
-    }, [selectedFolder, viewState, selectedPlaylistId]); 
+    }, [selectedFolder, viewState, selectedPlaylistId]);
 
 
     // 2. DEBOUNCED SEARCH (300ms Delay)
@@ -317,7 +317,7 @@ const AppContent = () => {
                     .then(res => res.json())
                     .then(data => {
                         if (data.error) {
-                            navigate('/'); 
+                            navigate('/');
                         } else {
                             const videoData = {
                                 ...data,
@@ -595,6 +595,38 @@ const AppContent = () => {
         }));
     };
 
+    const handleRenamePlaylist = async () => {
+        if (!selectedPlaylistId) return;
+
+        const currentPlaylist = playlists.find(p => p.id === selectedPlaylistId);
+        if (!currentPlaylist || currentPlaylist.name === 'Watch Later') return;
+
+        const newName = window.prompt("Enter new playlist name:", currentPlaylist.name);
+
+        if (newName && newName.trim() !== '' && newName !== currentPlaylist.name) {
+            try {
+                const res = await fetch(`/api/playlists/${selectedPlaylistId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: newName.trim() })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    // Update the local state so the UI changes instantly
+                    setPlaylists(prev => prev.map(p =>
+                        p.id === selectedPlaylistId ? { ...p, name: newName.trim() } : p
+                    ));
+                } else {
+                    alert(data.error || "Failed to rename playlist");
+                }
+            } catch (e) {
+                console.error("Rename error", e);
+            }
+        }
+    };
+
     const handleToggleWatchLater = async (videoId: string) => {
         // 1. Try to find the playlist
         let watchLater = playlists.find(p => p.name === 'Watch Later');
@@ -651,14 +683,14 @@ const AppContent = () => {
 
     const nextQueue = useMemo(() => {
         if (!currentVideo || displayedVideos.length === 0) return [];
-        
+
         const currentIndex = displayedVideos.findIndex(v => v.id === currentVideo.id);
-        
+
         // If we found the current video, grab the NEXT 5 videos from the list
         if (currentIndex !== -1 && currentIndex < displayedVideos.length - 1) {
             return displayedVideos.slice(currentIndex + 1, currentIndex + 6);
         }
-        
+
         return [];
     }, [currentVideo, displayedVideos]);
 
@@ -748,7 +780,7 @@ const AppContent = () => {
                                 A personal streaming experience for your local files.
                             </p>
                             <div className="flex gap-4">
-                                
+
                             </div>
                         </div>
                     )}
@@ -765,6 +797,18 @@ const AppContent = () => {
                                                 viewState.toLowerCase()}
                                     </h2>
                                     <span className="text-sm text-glass-subtext">{totalCount} videos</span>
+
+                                    {/* --- NEW: RENAME BUTTON --- */}
+                                    {viewState === ViewState.PLAYLIST &&
+                                        selectedPlaylistId &&
+                                        playlists.find(p => p.id === selectedPlaylistId)?.name !== 'Watch Later' && (
+                                            <button
+                                                onClick={handleRenamePlaylist}
+                                                className="ml-2 text-[10px] font-bold tracking-wider text-brand-primary hover:text-white transition-colors px-2.5 py-1 rounded-md bg-brand-primary/10 border border-brand-primary/20 hover:bg-brand-primary/40 active:scale-95"
+                                            >
+                                                RENAME
+                                            </button>
+                                        )}
                                 </div>
 
                                 <div className="relative">

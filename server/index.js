@@ -1111,6 +1111,30 @@ app.post('/api/playlists/:id/videos', (req, res) => {
   }
 });
 
+// --- RENAME PLAYLIST (NEW) ---
+app.patch('/api/playlists/:id', (req, res) => {
+  const { id } = req.params;
+  const { name } = req.body;
+  
+  if (!name || name.trim() === '') {
+    return res.status(400).json({ error: "Name is required" });
+  }
+
+  try {
+    // Protect the system "Watch Later" playlist from being broken
+    const pl = db.prepare('SELECT name FROM playlists WHERE id = ?').get(id);
+    if (pl && pl.name === 'Watch Later') {
+        return res.status(403).json({ error: "Cannot rename the Watch Later system playlist" });
+    }
+
+    db.prepare('UPDATE playlists SET name = ? WHERE id = ?').run(name.trim(), id);
+    res.json({ success: true, name: name.trim() });
+  } catch (e) {
+    console.error("Failed to rename playlist", e);
+    res.status(500).json({ error: "Failed to rename playlist" });
+  }
+});
+
 // --- FOLDERS ENDPOINT (File System Scan for Images) ---
 app.get('/api/folders', (req, res) => {
   const parent = req.query.parent || '';
