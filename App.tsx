@@ -24,7 +24,15 @@ const AppContent = () => {
     const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 768);
     const [isScanning, setIsScanning] = useState(false);
-    const [sortOption, setSortOption] = useState<SortOption>(SortOption.AIR_DATE_NEWEST); const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
+    const [sortOption, setSortOption] = useState<SortOption>(() => {
+        const savedSort = localStorage.getItem('play21_sortOrder');
+        // Verify the saved string is still a valid SortOption enum before applying it
+        if (savedSort && Object.values(SortOption).includes(savedSort as SortOption)) {
+            return savedSort as SortOption;
+        }
+        return SortOption.AIR_DATE_NEWEST; // Fallback default
+    });
+    const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
     const [pagination, setPagination] = useState({ page: 1, hasMore: true, isLoading: false });
     const [totalCount, setTotalCount] = useState(0);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -77,6 +85,11 @@ const AppContent = () => {
         };
         fetchDiscovery();
     }, [appSettings.hideHiddenFiles]);
+
+    // --- PERSIST SORT ORDER ---
+    useEffect(() => {
+        localStorage.setItem('play21_sortOrder', sortOption);
+    }, [sortOption]);
 
     // Features State
     const [history, setHistory] = useState<string[]>([]);
