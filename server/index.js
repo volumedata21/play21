@@ -707,7 +707,7 @@ app.get('/api/discovery/random', (req, res) => {
 
 // --- VIDEOS (Paginated) ---
 app.get('/api/videos', (req, res) => {
-  const { page, limit, folder, sort, search, hideHidden, favorites, history, playlist } = req.query; // Added 'playlist'
+  const { page, limit, folder, sort, search, hideHidden, favorites, history, playlist } = req.query; 
   const offset = (parseInt(page) - 1) * parseInt(limit);
 
   let orderBy = 'release_date DESC';
@@ -728,14 +728,10 @@ app.get('/api/videos', (req, res) => {
 
   // --- 1. FILTER LOGIC ---
   if (playlist) {
-    // JOIN allows us to only fetch videos linked to this playlist
     queryStr = 'SELECT videos.*, playlist_videos.added_at FROM videos JOIN playlist_videos ON videos.id = playlist_videos.video_id';
     countQuery = 'SELECT COUNT(*) as total FROM videos JOIN playlist_videos ON videos.id = playlist_videos.video_id';
-
     conditions.push('playlist_videos.playlist_id = ?');
     params.push(playlist);
-
-    // Override sort to show most recently added to playlist first
     orderBy = 'playlist_videos.added_at DESC';
   }
   else if (history === 'true') {
@@ -744,9 +740,7 @@ app.get('/api/videos', (req, res) => {
     orderBy = 'history.watched_at DESC';
   }
   else {
-    // Standard filters only apply if NOT in history/playlist mode
     if (hideHidden === 'true') {
-      // Robust hidden check (Files AND Folders)
       conditions.push("(filename NOT LIKE '.%' AND folder NOT LIKE '.%' AND folder NOT LIKE '%/.%')");
     }
     if (favorites === 'true') conditions.push('is_favorite = 1');
@@ -754,6 +748,113 @@ app.get('/api/videos', (req, res) => {
       conditions.push('(folder = ? OR folder LIKE ?)');
       params.push(folder, `${folder}/%`);
     }
+  }
+
+  // --- 2. SEARCH (Applies to all views) ---
+  if (search) {
+    const tokens = search.trim().split(/\s+/);
+    tokens.forEach(token => {
+      conditions.push('(name LIKE ? OR channel LIKE ? OR genre LIKE ?)');
+      params.push(`%${token}%`, `%${token}%`, `%${token}%`);
+    });
+  }
+
+  if (conditions.length > 0) whereClause = ' WHERE ' + conditions.join(' AND ');
+
+  const finalQuery = `${queryStr} ${whereClause} ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
+  const finalCountQuery = `${countQuery} ${whereClause}`;
+
+  try {
+    const totalObj = db.prepare(finalCountQuery).get(...params);
+    const total = totalObj ? totalObj.total : 0;
+
+    const videos = db.prepare(finalQuery).all(...params, limit, offset);
+
+    // Format output
+    const formatted = videos.map(v => ({
+      ...v,
+      isFavorite: Boolean(v.is_favorite),
+      views: `${v.views} views`,
+      timeAgo: v.release_date
+        ? new Date(v.release_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' })
+        : new Date(v.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
+      durationStr: formatDuration(v.duration),
+    }));
+
+    res.json({
+      videos: formatted,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Database error" });
+  }
+}); // <--- THE VIDEOS ROUTE SAFELY CLOSES HERE
+
+// --- DOWNLOAD ROUTE (NEW) ---
+app.get('/api/download/:id', async (req, res) => {
+  try {
+    const video = db.prepare('SELECT path, filename FROM videos WHERE id = ?').get(req.params.id);
+    if (!video) return res.status(404).send('Not found');
+
+    let fullPath = video.path;
+    if (video.path.startsWith('/media')) {
+      const relPath = decodeURIComponent(video.path.replace(/^\/media\//, ''));
+      fullPath = path.join(mediaDir, relPath);
+    }
+
+    try {
+      await fs.promises.access(fullPath, fs.constants.F_OK);
+    } catch (e) {
+      return res.status(404).send('File missing');
+    }
+
+    const downloadName = video.filename || path.basename(fullPath);
+
+    res.download(fullPath, downloadName, (err) => {
+        if (err && !res.headersSent) {
+            console.error("Download error:", err);
+            res.status(500).send("Error downloading file");
+        }
+    });
+  } catch (err) {
+    console.error("Download route error:", err);
+    if (!res.headersSent) res.status(500).send('Download Error');
+  }
+});
+
+// --- DOWNLOAD ROUTE (NEW) ---
+app.get('/api/download/:id', async (req, res) => {
+  try {
+    const video = db.prepare('SELECT path, filename FROM videos WHERE id = ?').get(req.params.id);
+    if (!video) return res.status(404).send('Not found');
+
+    let fullPath = video.path;
+    if (video.path.startsWith('/media')) {
+      const relPath = decodeURIComponent(video.path.replace(/^\/media\//, ''));
+      fullPath = path.join(mediaDir, relPath);
+    }
+
+    // Verify the file actually exists on disk before trying to send it
+    try {
+      await fs.promises.access(fullPath, fs.constants.F_OK);
+    } catch (e) {
+      return res.status(404).send('File missing');
+    }
+
+    // Use the original filename from the database, or extract it from the path
+    const downloadName = video.filename || path.basename(fullPath);
+
+    // res.download automatically sets the correct headers to force a file download
+    res.download(fullPath, downloadName, (err) => {
+        if (err && !res.headersSent) {
+            console.error("Download error:", err);
+            res.status(500).send("Error downloading file");
+        }
+    });
+  } catch (err) {
+    console.error("Download route error:", err);
+    if (!res.headersSent) res.status(500).send('Download Error');
   }
 
   // --- 2. SEARCH (Applies to all views) ---
@@ -1073,6 +1174,48 @@ app.post('/api/playlists/:id/videos', (req, res) => {
   } catch (e) {
     // Ignore duplicate inserts
     res.json({ success: true });
+  }
+});
+
+// --- RENAME PLAYLIST (NEW) ---
+app.patch('/api/playlists/:id', (req, res) => {
+  const { id } = req.params;
+  const { name } = req.body;
+  
+  if (!name || name.trim() === '') {
+    return res.status(400).json({ error: "Name is required" });
+  }
+
+  try {
+    // Protect the system "Watch Later" playlist from being broken
+    const pl = db.prepare('SELECT name FROM playlists WHERE id = ?').get(id);
+    if (pl && pl.name === 'Watch Later') {
+        return res.status(403).json({ error: "Cannot rename the Watch Later system playlist" });
+    }
+
+    db.prepare('UPDATE playlists SET name = ? WHERE id = ?').run(name.trim(), id);
+    res.json({ success: true, name: name.trim() });
+  } catch (e) {
+    console.error("Failed to rename playlist", e);
+    res.status(500).json({ error: "Failed to rename playlist" });
+  }
+});
+
+// --- DELETE PLAYLIST (NEW) ---
+app.delete('/api/playlists/:id', (req, res) => {
+  const { id } = req.params;
+  try {
+    const pl = db.prepare('SELECT name FROM playlists WHERE id = ?').get(id);
+    if (pl && pl.name === 'Watch Later') {
+        return res.status(403).json({ error: "Cannot delete the Watch Later system playlist" });
+    }
+
+    // Because your schema uses ON DELETE CASCADE, this automatically removes videos linked to it too!
+    db.prepare('DELETE FROM playlists WHERE id = ?').run(id);
+    res.json({ success: true });
+  } catch (e) {
+    console.error("Failed to delete playlist", e);
+    res.status(500).json({ error: "Failed to delete playlist" });
   }
 });
 

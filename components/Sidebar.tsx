@@ -1,5 +1,5 @@
 import React from 'react';
-import { HomeIcon, FolderIcon, HistoryIcon, StarIcon, PlaylistPlusIcon, PlaylistIcon, SettingsIcon } from './Icons';
+import { HomeIcon, FolderIcon, HistoryIcon, StarIcon, PlaylistPlusIcon, PlaylistIcon, SettingsIcon, EditIcon, TrashIcon} from './Icons';
 import { FolderStructure, ViewState, Playlist } from '../types';
 
 interface SidebarProps {
@@ -13,6 +13,8 @@ interface SidebarProps {
   onSelectView: (view: ViewState) => void;
   onSelectPlaylist: (id: string) => void;
   onCreatePlaylist: () => void;
+  onRenamePlaylist: (id: string, currentName: string) => void;
+  onDeletePlaylist: (id: string, name: string) => void;
   onOpenSettings: () => void;
   onClose: () => void;
 }
@@ -28,6 +30,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   onSelectView,
   onSelectPlaylist,
   onCreatePlaylist,
+  onRenamePlaylist,
+  onDeletePlaylist,
   onOpenSettings,
   onClose
 }) => {
@@ -116,22 +120,42 @@ const Sidebar: React.FC<SidebarProps> = ({
             {playlists.length === 0 && (
               <div className="px-4 py-2 text-sm text-glass-subtext italic opacity-50">No playlists</div>
             )}
-            {/* FIX: Filter out Watch Later so it doesn't show up twice */}
+            
             {playlists
               .filter(p => p.name !== 'Watch Later')
               .map(playlist => (
                 <div
                   key={playlist.id}
-                  onClick={() => onSelectPlaylist(playlist.id)}
-                  className={`flex items-center gap-3 px-4 py-2.5 rounded-xl cursor-pointer transition-all duration-100 outline-none focus:outline-none focus:ring-0 tap-highlight-transparent truncate group ${viewState === ViewState.PLAYLIST && selectedPlaylistId === playlist.id
+                  className={`flex items-center justify-between px-4 py-2.5 rounded-xl cursor-pointer transition-all duration-100 outline-none focus:outline-none focus:ring-0 tap-highlight-transparent group ${viewState === ViewState.PLAYLIST && selectedPlaylistId === playlist.id
                     ? 'bg-white/10 text-white border border-white/5 shadow-inner'
                     : 'text-glass-subtext hover:bg-white/5 hover:text-white'
                     }`}
                 >
-                  <div className={`${viewState === ViewState.PLAYLIST && selectedPlaylistId === playlist.id ? 'text-brand-primary' : 'opacity-70 group-hover:opacity-100'}`}>
-                    <PlaylistIcon />
+                  {/* Clickable Area for Navigation */}
+                  <div onClick={() => onSelectPlaylist(playlist.id)} className="flex items-center gap-3 flex-1 overflow-hidden">
+                      <div className={`${viewState === ViewState.PLAYLIST && selectedPlaylistId === playlist.id ? 'text-brand-primary' : 'opacity-70 group-hover:opacity-100'}`}>
+                        <PlaylistIcon />
+                      </div>
+                      <span className="text-sm font-medium truncate">{playlist.name}</span>
                   </div>
-                  <span className="text-sm font-medium truncate">{playlist.name}</span>
+
+                  {/* Hover Actions (Rename / Delete) */}
+                  <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); onRenamePlaylist(playlist.id, playlist.name); }} 
+                        className="p-1.5 text-glass-subtext hover:text-brand-primary transition-colors"
+                        title="Rename"
+                      >
+                          <EditIcon />
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); onDeletePlaylist(playlist.id, playlist.name); }} 
+                        className="p-1.5 text-glass-subtext hover:text-red-400 transition-colors"
+                        title="Delete"
+                      >
+                          <TrashIcon />
+                      </button>
+                  </div>
                 </div>
               ))}
           </div>

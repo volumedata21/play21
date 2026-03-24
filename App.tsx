@@ -24,7 +24,15 @@ const AppContent = () => {
     const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 768);
     const [isScanning, setIsScanning] = useState(false);
-    const [sortOption, setSortOption] = useState<SortOption>(SortOption.AIR_DATE_NEWEST); const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
+    const [sortOption, setSortOption] = useState<SortOption>(() => {
+        const savedSort = localStorage.getItem('play21_sortOrder');
+        // Verify the saved string is still a valid SortOption enum before applying it
+        if (savedSort && Object.values(SortOption).includes(savedSort as SortOption)) {
+            return savedSort as SortOption;
+        }
+        return SortOption.AIR_DATE_NEWEST; // Fallback default
+    });
+    const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
     const [pagination, setPagination] = useState({ page: 1, hasMore: true, isLoading: false });
     const [totalCount, setTotalCount] = useState(0);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -57,7 +65,7 @@ const AppContent = () => {
                 // Pass the current setting to the backend
                 const res = await fetch(`/api/discovery/random?hideHidden=${appSettings.hideHiddenFiles}`);
                 const data = await res.json();
-                
+
                 // FIX: Added the 'if' check back so the closing bracket '}' below matches something
                 if (data.success) {
                     const mapped = data.videos.map((v: any) => ({
@@ -77,6 +85,11 @@ const AppContent = () => {
         };
         fetchDiscovery();
     }, [appSettings.hideHiddenFiles]);
+
+    // --- PERSIST SORT ORDER ---
+    useEffect(() => {
+        localStorage.setItem('play21_sortOrder', sortOption);
+    }, [sortOption]);
 
     // Features State
     const [history, setHistory] = useState<string[]>([]);
@@ -276,7 +289,7 @@ const AppContent = () => {
             setCurrentSubFolders([]);
         }
         // Note: We removed 'searchTerm' from this dependency array
-    }, [selectedFolder, viewState, selectedPlaylistId]); 
+    }, [selectedFolder, viewState, selectedPlaylistId]);
 
 
     // 2. DEBOUNCED SEARCH (300ms Delay)
@@ -317,7 +330,7 @@ const AppContent = () => {
                     .then(res => res.json())
                     .then(data => {
                         if (data.error) {
-                            navigate('/'); 
+                            navigate('/');
                         } else {
                             const videoData = {
                                 ...data,
@@ -595,6 +608,49 @@ const AppContent = () => {
         }));
     };
 
+    const handleRenamePlaylist = async (id: string, currentName: string) => {
+        const newName = window.prompt("Enter new playlist name:", currentName);
+        
+        if (newName && newName.trim() !== '' && newName !== currentName) {
+            try {
+                const res = await fetch(`/api/playlists/${id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: newName.trim() })
+                });
+                
+                const data = await res.json();
+                if (data.success) {
+                    setPlaylists(prev => prev.map(p => 
+                        p.id === id ? { ...p, name: newName.trim() } : p
+                    ));
+                }
+            } catch (e) {
+                console.error("Rename error", e);
+            }
+        }
+    };
+
+    const handleDeletePlaylist = async (id: string, name: string) => {
+        if (window.confirm(`Are you sure you want to delete the playlist "${name}"?`)) {
+            try {
+                const res = await fetch(`/api/playlists/${id}`, { method: 'DELETE' });
+                const data = await res.json();
+                
+                if (data.success) {
+                    setPlaylists(prev => prev.filter(p => p.id !== id));
+                    
+                    // If the user was currently looking at the deleted playlist, kick them to Home
+                    if (selectedPlaylistId === id) {
+                        navigate('/');
+                    }
+                }
+            } catch (e) {
+                console.error("Delete error", e);
+            }
+        }
+    };
+
     const handleToggleWatchLater = async (videoId: string) => {
         // 1. Try to find the playlist
         let watchLater = playlists.find(p => p.name === 'Watch Later');
@@ -651,14 +707,14 @@ const AppContent = () => {
 
     const nextQueue = useMemo(() => {
         if (!currentVideo || displayedVideos.length === 0) return [];
-        
+
         const currentIndex = displayedVideos.findIndex(v => v.id === currentVideo.id);
-        
+
         // If we found the current video, grab the NEXT 5 videos from the list
         if (currentIndex !== -1 && currentIndex < displayedVideos.length - 1) {
             return displayedVideos.slice(currentIndex + 1, currentIndex + 6);
         }
-        
+
         return [];
     }, [currentVideo, displayedVideos]);
 
@@ -719,6 +775,8 @@ const AppContent = () => {
                     onSelectView={handleSidebarViewChange}
                     onSelectPlaylist={handleSidebarPlaylistSelect}
                     onCreatePlaylist={handleCreatePlaylist}
+                    onRenamePlaylist={handleRenamePlaylist}
+                    onDeletePlaylist={handleDeletePlaylist}
                     onOpenSettings={() => setIsSettingsOpen(true)}
                     onClose={() => setIsSidebarOpen(false)}
                 />
@@ -748,7 +806,7 @@ const AppContent = () => {
                                 A personal streaming experience for your local files.
                             </p>
                             <div className="flex gap-4">
-                                
+
                             </div>
                         </div>
                     )}
@@ -765,6 +823,23 @@ const AppContent = () => {
                                                 viewState.toLowerCase()}
                                     </h2>
                                     <span className="text-sm text-glass-subtext">{totalCount} videos</span>
+
+                                    {/* --- NEW: RENAME BUTTON --- */}
+                                    {/* --- NEW: RENAME BUTTON --- */}
+                                    {viewState === ViewState.PLAYLIST &&
+                                        selectedPlaylistId &&
+                                        playlists.find(p => p.id === selectedPlaylistId)?.name !== 'Watch Later' && (
+                                            <button
+                                                // FIX: Added the arrow function to pass the right arguments!
+                                                onClick={() => {
+                                                    const currentPl = playlists.find(p => p.id === selectedPlaylistId);
+                                                    if (currentPl) handleRenamePlaylist(selectedPlaylistId, currentPl.name);
+                                                }}
+                                                className="ml-2 text-[10px] font-bold tracking-wider text-brand-primary hover:text-white transition-colors px-2.5 py-1 rounded-md bg-brand-primary/10 border border-brand-primary/20 hover:bg-brand-primary/40 active:scale-95"
+                                            >
+                                                RENAME
+                                            </button>
+                                        )}
                                 </div>
 
                                 <div className="relative">
